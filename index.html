@@ -85,31 +85,42 @@
   .add-form{ padding:16px; border-bottom:1px dashed var(--line-strong); }
   .add-form label{ display:block; font-size:11px; color:var(--ink-soft); margin-bottom:6px; }
   .add-form textarea{
-    width:100%; height:80px; padding:8px; border:1px solid var(--line-strong);
-    border-radius:4px; font-size:12.5px; background:#fff; resize:none;
+    width:100%; height:90px; padding:8px; border:1px solid var(--line-strong);
+    border-radius:4px; font-size:12px; background:#fff; resize:none;
   }
   .add-form button{
     width:100%; margin-top:6px; padding:8px 0; background:var(--ledger-blue);
     color:#F4F0E4; border:none; border-radius:4px; font-weight:600; cursor:pointer;
   }
   .list-wrap{ flex:1; overflow-y:auto; padding:10px 12px 12px; }
+  
+  /* 담보 그룹 스타일 */
+  .group-header{
+    font-size:13px; font-weight:700; color:var(--ink); padding:6px 8px; margin-top:10px; margin-bottom:6px;
+    border-bottom:2px solid var(--line-strong); display:flex; align-items:center; justify-content:space-between;
+  }
+  .group-header .group-badge-label{
+    font-size:11px; padding:2px 8px; border-radius:12px; color:#fff; font-weight:600;
+  }
+
   .card{
     background:#fff; border:1px solid var(--line-strong); border-radius:6px;
     padding:10px 12px; margin-bottom:8px; display:flex; align-items:flex-start; gap:10px; cursor:pointer;
   }
   .card.active{ border-color:var(--stamp-red); }
   .badge{
-    flex-shrink:0; width:26px; height:26px; border-radius:50%; border:2px solid var(--stamp-red);
-    color:var(--stamp-red); display:flex; align-items:center; justify-content:center;
-    font-weight:600; font-size:12px; background:#FBF4EC;
+    flex-shrink:0; width:26px; height:26px; border-radius:50%; border:2px solid #fff;
+    color:#fff; display:flex; align-items:center; justify-content:center;
+    font-weight:600; font-size:12px; box-shadow:0 1px 3px rgba(0,0,0,0.3);
   }
   .sidebar-footer{ border-top:1px solid var(--line-strong); padding:12px 14px; background:var(--paper-deep); }
   .footer-row{ display:flex; gap:8px; }
   .footer-row button{ flex:1; padding:8px; border-radius:4px; border:1px solid var(--line-strong); background:#fff; font-weight:600; cursor:pointer; }
   #map{ position:absolute; top:0; left:0; right:0; bottom:0; }
   .marker-badge{
-    width:26px; height:26px; border-radius:50%; background:var(--stamp-red); border:2px solid #fff;
+    width:26px; height:26px; border-radius:50%; border:2px solid #fff;
     color:#fff; font-weight:600; font-size:12px; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 5px rgba(0,0,0,0.4);
   }
 </style>
 </head>
@@ -142,8 +153,8 @@
   <div class="main">
     <div class="sidebar">
       <div class="add-form">
-        <label>지번 주소 목록 (다중 붙여넣기)</label>
-        <textarea id="addrInput" placeholder="예)&#10;경기도 화성시 향남읍 100-1&#10;경기도 화성시 향남읍 100-2"></textarea>
+        <label>지번 주소 목록 ([담보명] 주소 형태로 입력 가능)</label>
+        <textarea id="addrInput" placeholder="예)&#10;[담보1] 경기도 화성시 향남읍 100-1&#10;[담보1] 경기도 화성시 향남읍 100-2&#10;[담보2] 경기도 화성시 향남읍 200-1"></textarea>
         <button id="addBtn">지번 일괄 등록</button>
       </div>
       <div class="list-wrap" id="listWrap"></div>
@@ -187,6 +198,18 @@ function unlockApp(){
 if(localStorage.getItem(AUTH_KEY) === 'true'){
   unlockApp();
 }
+
+// ---------- 팔레트 설정 (담보 그룹별 색상) ----------
+const GROUP_COLORS = [
+  '#A8362A', // Stamp Red
+  '#2A4258', // Ledger Blue
+  '#2E7D32', // Dark Green
+  '#6A1B9A', // Deep Purple
+  '#E65100', // Deep Orange
+  '#00838F', // Cyan
+  '#4E342E', // Brown
+  '#37474F'  // Blue Grey
+];
 
 // ---------- 앱 기능 로직 ----------
 let map, cadastralLayer;
@@ -244,10 +267,30 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   const raw = document.getElementById('addrInput').value.trim();
   if(!raw) return;
   const lines = raw.split('\n').map(s=>s.trim()).filter(Boolean);
-  for(let addr of lines){
-    const coord = await geocode(addr);
-    if(coord) parcels.push({ id: 'p_'+Date.now(), address: addr, lat: coord.lat, lng: coord.lng });
+  
+  for(let line of lines){
+    let groupName = '기본담보';
+    let cleanAddr = line;
+
+    // [담보명] 분리 파싱
+    const match = line.match(/^\[(.*?)\]\s*(.*)$/);
+    if(match){
+      groupName = match[1].trim() || '기본담보';
+      cleanAddr = match[2].trim();
+    }
+
+    const coord = await geocode(cleanAddr);
+    if(coord){
+      parcels.push({ 
+        id: 'p_'+Date.now()+'_'+Math.random(), 
+        group: groupName, 
+        address: cleanAddr, 
+        lat: coord.lat, 
+        lng: coord.lng 
+      });
+    }
   }
+  
   localStorage.setItem('parcel-list', JSON.stringify(parcels));
   renderList(); fitToAll(); document.getElementById('addrInput').value = '';
 });
@@ -255,14 +298,57 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
 function renderList(){
   const wrap = document.getElementById('listWrap'); wrap.innerHTML = '';
   markerGroup.clearLayers();
-  parcels.forEach((p, idx)=>{
-    const card = document.createElement('div'); card.className = 'card';
-    card.innerHTML = `<div class="badge">${idx+1}</div><div><b>${p.address}</b><br><small>${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</small></div>`;
-    card.addEventListener('click', ()=> map.setView([p.lat, p.lng], 18));
-    wrap.appendChild(card);
 
-    const icon = L.divIcon({ className:'', html: `<div class="marker-badge">${idx+1}</div>`, iconSize:[26,26] });
-    L.marker([p.lat, p.lng], { icon }).addTo(markerGroup).bindPopup(p.address);
+  if(!parcels.length) return;
+
+  // 그룹 목록 추출 및 색상 매핑
+  const groups = Array.from(new Set(parcels.map(p => p.group || '기본담보')));
+  const groupColorMap = {};
+  groups.forEach((g, idx) => {
+    groupColorMap[g] = GROUP_COLORS[idx % GROUP_COLORS.length];
+  });
+
+  let globalIndex = 1;
+
+  groups.forEach(groupName => {
+    const groupParcels = parcels.filter(p => (p.group || '기본담보') === groupName);
+    const color = groupColorMap[groupName];
+
+    // 그룹 헤더 생성
+    const gHeader = document.createElement('div');
+    gHeader.className = 'group-header';
+    gHeader.innerHTML = `
+      <span>📌 ${groupName}</span>
+      <span class="group-badge-label" style="background-color:${color}">${groupParcels.length}건</span>
+    `;
+    wrap.appendChild(gHeader);
+
+    // 카드 및 마커 생성
+    groupParcels.forEach(p => {
+      const currentNum = globalIndex++;
+      
+      const card = document.createElement('div'); 
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="badge" style="background-color:${color}">${currentNum}</div>
+        <div>
+          <b>${p.address}</b><br>
+          <small style="color:var(--ink-soft);">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</small>
+        </div>
+      `;
+      card.addEventListener('click', () => map.setView([p.lat, p.lng], 18));
+      wrap.appendChild(card);
+
+      const icon = L.divIcon({ 
+        className: '', 
+        html: `<div class="marker-badge" style="background-color:${color}">${currentNum}</div>`, 
+        iconSize: [26, 26] 
+      });
+      
+      L.marker([p.lat, p.lng], { icon })
+        .addTo(markerGroup)
+        .bindPopup(`<b>[${groupName}]</b><br>${p.address}`);
+    });
   });
 }
 
