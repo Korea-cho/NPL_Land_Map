@@ -68,60 +68,92 @@
     border:1px solid #C9A45C; padding:2px 7px; border-radius:3px;
   }
   .brand h1{ margin:0; font-size:17px; font-weight:700; }
-  .key-row{ display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono', monospace; font-size:12px; }
-  .key-row input{
-    background:#1D2E3C; border:1px solid #3C566B; color:#EFE9D8;
-    padding:7px 10px; border-radius:4px; font-size:12px; width:220px;
-  }
-  .key-row button{
-    background:var(--stamp-red); color:#fff; border:none; padding:7px 12px;
-    border-radius:4px; font-size:12px; font-weight:600; cursor:pointer;
-  }
+
   .main{ flex:1; display:flex; min-height:0; }
   .sidebar{
-    width:360px; flex-shrink:0; background:var(--paper); border-right:1px solid var(--line-strong);
+    width:380px; flex-shrink:0; background:var(--paper); border-right:1px solid var(--line-strong);
     display:flex; flex-direction:column; box-shadow: 2px 0 10px var(--paper-shadow); z-index:5;
   }
-  .add-form{ padding:16px; border-bottom:1px dashed var(--line-strong); }
-  .add-form label{ display:block; font-size:11px; color:var(--ink-soft); margin-bottom:6px; }
+  
+  /* 등록 폼 컨트롤 */
+  .add-form{ padding:14px; border-bottom:1px dashed var(--line-strong); display:flex; flex-direction:column; gap:8px; }
+  .add-form label{ font-size:11px; color:var(--ink-soft); font-weight:600; }
   .add-form textarea{
-    width:100%; height:90px; padding:8px; border:1px solid var(--line-strong);
+    width:100%; height:95px; padding:8px; border:1px solid var(--line-strong);
     border-radius:4px; font-size:12px; background:#fff; resize:none;
   }
-  .add-form button{
-    width:100%; margin-top:6px; padding:8px 0; background:var(--ledger-blue);
+  .add-form button.submit-btn{
+    width:100%; padding:8px 0; background:var(--ledger-blue);
     color:#F4F0E4; border:none; border-radius:4px; font-weight:600; cursor:pointer;
   }
-  .list-wrap{ flex:1; overflow-y:auto; padding:10px 12px 12px; }
-  
-  /* 담보 그룹 스타일 */
-  .group-header{
-    font-size:13px; font-weight:700; color:var(--ink); padding:6px 8px; margin-top:10px; margin-bottom:6px;
-    border-bottom:2px solid var(--line-strong); display:flex; align-items:center; justify-content:space-between;
-  }
-  .group-header .group-badge-label{
-    font-size:11px; padding:2px 8px; border-radius:12px; color:#fff; font-weight:600;
-  }
 
+  .list-wrap{ flex:1; overflow-y:auto; padding:10px 12px 12px; }
+
+  /* 개별 지번 카드 스타일 및 편집 컨트롤 */
   .card{
     background:#fff; border:1px solid var(--line-strong); border-radius:6px;
-    padding:10px 12px; margin-bottom:8px; display:flex; align-items:flex-start; gap:10px; cursor:pointer;
+    padding:10px 12px; margin-bottom:8px; display:flex; flex-direction:column; gap:6px; cursor:pointer;
+    transition:border-color 0.15s, box-shadow 0.15s;
   }
-  .card.active{ border-color:var(--stamp-red); }
-  .badge{
-    flex-shrink:0; width:26px; height:26px; border-radius:50%; border:2px solid #fff;
-    color:#fff; display:flex; align-items:center; justify-content:center;
-    font-weight:600; font-size:12px; box-shadow:0 1px 3px rgba(0,0,0,0.3);
+  .card:hover{ border-color:var(--ledger-blue); box-shadow:0 2px 6px rgba(0,0,0,0.08); }
+  
+  .card-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .card-left{ display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
+  .card-info{ flex:1; overflow:hidden; }
+  .card-info b{ font-size:13px; color:var(--ink); word-break:break-all; }
+  .card-info small{ font-size:11px; color:var(--ink-soft); display:block; }
+
+  /* 개별 카드 내 스타일 수정 툴바 */
+  .card-controls{
+    display:flex; flex-direction:column; gap:4px;
+    background:#F9F8F3; padding:6px 8px; border-radius:4px; border:1px solid var(--line); margin-top:2px;
   }
+  .control-row{ display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .card-controls select{
+    font-size:11px; padding:2px 4px; border:1px solid var(--line-strong); border-radius:3px; background:#fff; cursor:pointer;
+  }
+  
+  /* 엑셀 표준 색 팔레트 버블 */
+  .excel-palette{ display:flex; align-items:center; gap:3px; flex-wrap:nowrap; }
+  .excel-color-chip{
+    width:16px; height:16px; border-radius:2px; border:1px solid rgba(0,0,0,0.25); cursor:pointer;
+    display:inline-block; transition:transform 0.1s;
+  }
+  .excel-color-chip:hover{ transform:scale(1.25); z-index:2; }
+  .color-change-input{
+    width:18px; height:18px; border:none; padding:0; background:none; cursor:pointer; border-radius:2px;
+  }
+
+  /* 개별 삭제 버튼 */
+  .delete-item-btn{
+    background:none; border:none; color:#C25348; font-size:15px; font-weight:bold;
+    cursor:pointer; padding:2px 6px; border-radius:4px; line-height:1; flex-shrink:0;
+    transition:background-color 0.15s;
+  }
+  .delete-item-btn:hover{ background:#FADBD8; color:#922B21; }
+
+  /* 커스텀 마커 / 뱃지 도형 스타일 */
+  .shape-badge{
+    flex-shrink:0; width:28px; height:28px; color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:12px; box-shadow:0 2px 4px rgba(0,0,0,0.3);
+    border:2px solid #fff; text-shadow: 0 0 2px rgba(0,0,0,0.6);
+  }
+  .shape-circle { border-radius:50%; }
+  .shape-square { border-radius:4px; }
+  .shape-triangle { 
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%); 
+    border-radius:0; padding-top:6px; width:30px; height:28px;
+  }
+  .shape-star {
+    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+    border-radius:0; width:30px; height:30px; font-size:11px;
+  }
+
   .sidebar-footer{ border-top:1px solid var(--line-strong); padding:12px 14px; background:var(--paper-deep); }
   .footer-row{ display:flex; gap:8px; }
   .footer-row button{ flex:1; padding:8px; border-radius:4px; border:1px solid var(--line-strong); background:#fff; font-weight:600; cursor:pointer; }
   #map{ position:absolute; top:0; left:0; right:0; bottom:0; }
-  .marker-badge{
-    width:26px; height:26px; border-radius:50%; border:2px solid #fff;
-    color:#fff; font-weight:600; font-size:12px; display:flex; align-items:center; justify-content:center;
-    box-shadow:0 2px 5px rgba(0,0,0,0.4);
-  }
 </style>
 </head>
 <body>
@@ -144,20 +176,18 @@
       <span class="seal">NPL·地籍</span>
       <h1>다중 지번 지적도 조회</h1>
     </div>
-    <div class="key-row">
-      <input type="password" id="apiKeyInput" placeholder="브이월드 API 키">
-      <button id="saveKeyBtn">저장</button>
-    </div>
   </div>
 
   <div class="main">
     <div class="sidebar">
       <div class="add-form">
-        <label>지번 주소 목록 ([담보명] 주소 형태로 입력 가능)</label>
-        <textarea id="addrInput" placeholder="예)&#10;[담보1] 경기도 화성시 향남읍 100-1&#10;[담보1] 경기도 화성시 향남읍 100-2&#10;[담보2] 경기도 화성시 향남읍 200-1"></textarea>
-        <button id="addBtn">지번 일괄 등록</button>
+        <label>지번 주소 목록 (줄바꿈 구분)</label>
+        <textarea id="addrInput" placeholder="예)&#10;경기도 화성시 향남읍 발안리 100-1&#10;경기도 화성시 향남읍 발안리 100-2"></textarea>
+        <button id="addBtn" class="submit-btn">지번 일괄 등록</button>
       </div>
+
       <div class="list-wrap" id="listWrap"></div>
+      
       <div class="sidebar-footer">
         <div class="footer-row">
           <button id="fitBtn">전체 보기</button>
@@ -173,7 +203,7 @@
 
 <script>
 // ---------- 비밀번호 인증 로직 ----------
-const SECRET_PASSWORD = '0504'; // 💡 변경할 비밀번호 설정
+const SECRET_PASSWORD = '0504';
 const AUTH_KEY = 'npl_map_auth';
 
 document.getElementById('passBtn').addEventListener('click', checkAuth);
@@ -192,41 +222,50 @@ function checkAuth(){
 function unlockApp(){
   document.getElementById('authOverlay').style.display = 'none';
   document.getElementById('appContainer').style.display = 'flex';
-  initMap();
+  setTimeout(()=>{
+    initMap();
+    if(map) map.invalidateSize();
+  }, 100);
 }
 
 if(localStorage.getItem(AUTH_KEY) === 'true'){
   unlockApp();
 }
 
-// ---------- 팔레트 설정 (담보 그룹별 색상) ----------
-const GROUP_COLORS = [
-  '#A8362A', // Stamp Red
-  '#2A4258', // Ledger Blue
-  '#2E7D32', // Dark Green
-  '#6A1B9A', // Deep Purple
-  '#E65100', // Deep Orange
-  '#00838F', // Cyan
-  '#4E342E', // Brown
-  '#37474F'  // Blue Grey
+// 📊 엑셀 표준 10가지 색상 정의
+const EXCEL_STANDARD_COLORS = [
+  '#C00000', // 다크 레드
+  '#FF0000', // 빨강
+  '#FFC000', // 주황/노랑
+  '#FFFF00', // 노랑
+  '#92D050', // 연두
+  '#00B050', // 녹색
+  '#00B0F0', // 연한 파랑
+  '#0070C0', // 파랑
+  '#002060', // 진한 파랑
+  '#7030A0'  // 자주
 ];
 
 // ---------- 앱 기능 로직 ----------
+const DEFAULT_API_KEY = 'B6C48A1E-87C1-3FDB-B35A-C9BA92749595';
 let map, cadastralLayer;
 let parcels = JSON.parse(localStorage.getItem('parcel-list') || '[]');
-let apiKey = localStorage.getItem('vworld-api-key') || 'B6C48A1E-87C1-3FDB-B35A-C9BA92749595';
+
+let apiKey = localStorage.getItem('vworld-api-key') || DEFAULT_API_KEY;
 let markerGroup;
 
 function initMap(){
-  if(map) return;
-  document.getElementById('apiKeyInput').value = apiKey;
-  map = L.map('map', { zoomControl: true }).setView([36.5, 127.8], 7);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20 }).addTo(map);
-  markerGroup = L.layerGroup().addTo(map);
+  if(!map){
+    map = L.map('map', { zoomControl: true }).setView([36.5, 127.8], 7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20 }).addTo(map);
+    markerGroup = L.layerGroup().addTo(map);
+  }
   
   rebuildCadastral();
   renderList();
   if(parcels.length) fitToAll();
+
+  setTimeout(()=> map.invalidateSize(), 200);
 }
 
 function rebuildCadastral(){
@@ -236,12 +275,6 @@ function rebuildCadastral(){
     layers: 'lp_pa_cbnd_bubun', styles: 'lp_pa_cbnd_bubun', format: 'image/png', transparent: true, version: '1.3.0', key: apiKey, opacity: 0.75
   }).addTo(map);
 }
-
-document.getElementById('saveKeyBtn').addEventListener('click', ()=>{
-  apiKey = document.getElementById('apiKeyInput').value.trim();
-  localStorage.setItem('vworld-api-key', apiKey);
-  rebuildCadastral();
-});
 
 function jsonpCall(url, params){
   return new Promise(res=>{
@@ -263,31 +296,26 @@ async function geocode(addr){
   return null;
 }
 
+// 지번 등록 시 기본 색상을 엑셀 표준 '다크 레드(#C00000)'로 지정
 document.getElementById('addBtn').addEventListener('click', async ()=>{
   const raw = document.getElementById('addrInput').value.trim();
+
   if(!raw) return;
   const lines = raw.split('\n').map(s=>s.trim()).filter(Boolean);
   
   for(let line of lines){
-    let groupName = '기본담보';
-    let cleanAddr = line;
-
-    // [담보명] 분리 파싱
-    const match = line.match(/^\[(.*?)\]\s*(.*)$/);
-    if(match){
-      groupName = match[1].trim() || '기본담보';
-      cleanAddr = match[2].trim();
-    }
-
-    const coord = await geocode(cleanAddr);
+    const coord = await geocode(line);
     if(coord){
       parcels.push({ 
         id: 'p_'+Date.now()+'_'+Math.random(), 
-        group: groupName, 
-        address: cleanAddr, 
+        shape: 'circle',
+        color: '#C00000', // 엑셀 표준 첫 번째 색상 (Dark Red)
+        address: line, 
         lat: coord.lat, 
         lng: coord.lng 
       });
+    } else {
+      alert(`주소를 찾을 수 없습니다: ${line}\n('리' 명칭까지 명확히 포함되었는지 확인해주세요)`);
     }
   }
   
@@ -295,60 +323,122 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   renderList(); fitToAll(); document.getElementById('addrInput').value = '';
 });
 
+// 개별 항목 스타일 변경 함수 (도형, 색상)
+function updateParcelStyle(id, newShape, newColor){
+  const item = parcels.find(p => p.id === id);
+  if(item){
+    if(newShape) item.shape = newShape;
+    if(newColor) item.color = newColor;
+    localStorage.setItem('parcel-list', JSON.stringify(parcels));
+    renderList(); // 변경 즉시 리프레시
+  }
+}
+
+// 개별 항목 삭제 함수
+function deleteSingleParcel(id){
+  parcels = parcels.filter(p => p.id !== id);
+  localStorage.setItem('parcel-list', JSON.stringify(parcels));
+  renderList();
+  if(parcels.length) fitToAll();
+}
+
 function renderList(){
   const wrap = document.getElementById('listWrap'); wrap.innerHTML = '';
   markerGroup.clearLayers();
 
   if(!parcels.length) return;
 
-  // 그룹 목록 추출 및 색상 매핑
-  const groups = Array.from(new Set(parcels.map(p => p.group || '기본담보')));
-  const groupColorMap = {};
-  groups.forEach((g, idx) => {
-    groupColorMap[g] = GROUP_COLORS[idx % GROUP_COLORS.length];
-  });
-
   let globalIndex = 1;
 
-  groups.forEach(groupName => {
-    const groupParcels = parcels.filter(p => (p.group || '기본담보') === groupName);
-    const color = groupColorMap[groupName];
+  parcels.forEach(p => {
+    const currentNum = globalIndex++;
+    const shapeClass = `shape-${p.shape || 'circle'}`;
+    const itemColor = p.color || '#C00000';
+    
+    // 엑셀 표준 10가지 색상 칩 HTML 생성
+    const excelPaletteHtml = EXCEL_STANDARD_COLORS.map(c => 
+      `<span class="excel-color-chip" style="background-color:${c}" data-color="${c}" title="${c}"></span>`
+    ).join('');
 
-    // 그룹 헤더 생성
-    const gHeader = document.createElement('div');
-    gHeader.className = 'group-header';
-    gHeader.innerHTML = `
-      <span>📌 ${groupName}</span>
-      <span class="group-badge-label" style="background-color:${color}">${groupParcels.length}건</span>
-    `;
-    wrap.appendChild(gHeader);
-
-    // 카드 및 마커 생성
-    groupParcels.forEach(p => {
-      const currentNum = globalIndex++;
-      
-      const card = document.createElement('div'); 
-      card.className = 'card';
-      card.innerHTML = `
-        <div class="badge" style="background-color:${color}">${currentNum}</div>
-        <div>
-          <b>${p.address}</b><br>
-          <small style="color:var(--ink-soft);">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</small>
+    const card = document.createElement('div'); 
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-top">
+        <div class="card-left">
+          <div class="shape-badge ${shapeClass}" style="background-color:${itemColor}">${currentNum}</div>
+          <div class="card-info">
+            <b>${p.address}</b>
+            <small>${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</small>
+          </div>
         </div>
-      `;
-      card.addEventListener('click', () => map.setView([p.lat, p.lng], 18));
-      wrap.appendChild(card);
-
-      const icon = L.divIcon({ 
-        className: '', 
-        html: `<div class="marker-badge" style="background-color:${color}">${currentNum}</div>`, 
-        iconSize: [26, 26] 
-      });
+        <button class="delete-item-btn" title="이 지번만 삭제">✕</button>
+      </div>
       
-      L.marker([p.lat, p.lng], { icon })
-        .addTo(markerGroup)
-        .bindPopup(`<b>[${groupName}]</b><br>${p.address}`);
+      <div class="card-controls">
+        <div class="control-row">
+          <select class="shape-change-select" title="도형 변경">
+            <option value="circle" ${p.shape==='circle'?'selected':''}>● 동그라미</option>
+            <option value="square" ${p.shape==='square'?'selected':''}>■ 네모</option>
+            <option value="triangle" ${p.shape==='triangle'?'selected':''}>▲ 세모</option>
+            <option value="star" ${p.shape==='star'?'selected':''}>★ 별표</option>
+          </select>
+          
+          <!-- 📊 엑셀 표준 색 팔레트 칩 -->
+          <div class="excel-palette">
+            ${excelPaletteHtml}
+            <input type="color" class="color-change-input" value="${itemColor}" title="사용자 지정 색상">
+          </div>
+        </div>
+      </div>
+    `;
+
+    // 카드 클릭 시 지도 이동
+    card.addEventListener('click', (e) => {
+      if(e.target.closest('.card-controls') || e.target.classList.contains('delete-item-btn')) return;
+      map.setView([p.lat, p.lng], 18);
     });
+
+    // 도형 변경 이벤트
+    const shapeSelect = card.querySelector('.shape-change-select');
+    shapeSelect.addEventListener('change', (e) => {
+      updateParcelStyle(p.id, e.target.value, null);
+    });
+
+    // 엑셀 표준 색상 칩 클릭 이벤트
+    const chips = card.querySelectorAll('.excel-color-chip');
+    chips.forEach(chip => {
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const selectedColor = chip.getAttribute('data-color');
+        updateParcelStyle(p.id, null, selectedColor);
+      });
+    });
+
+    // 사용자 지정 색상 커스텀 피커 이벤트
+    const colorInput = card.querySelector('.color-change-input');
+    colorInput.addEventListener('change', (e) => {
+      updateParcelStyle(p.id, null, e.target.value);
+    });
+
+    // 삭제 버튼 이벤트
+    const delBtn = card.querySelector('.delete-item-btn');
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteSingleParcel(p.id);
+    });
+
+    wrap.appendChild(card);
+
+    // 지도 마커 생성
+    const icon = L.divIcon({ 
+      className: '', 
+      html: `<div class="shape-badge ${shapeClass}" style="background-color:${itemColor}">${currentNum}</div>`, 
+      iconSize: [30, 30] 
+    });
+    
+    L.marker([p.lat, p.lng], { icon })
+      .addTo(markerGroup)
+      .bindPopup(`${p.address}`);
   });
 }
 
