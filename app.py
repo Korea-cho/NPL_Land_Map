@@ -1,9 +1,14 @@
 import json
 import math
+import urllib.parse
 
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
+
+# GitHub Pages로 배포한 지도 전용 페이지 (실제 도메인이 있어야 네이버/카카오 인증이 통과됩니다).
+# 이 도메인은 네이버/카카오 콘솔에 이미 등록된 https://korea-cho.github.io 를 그대로 사용합니다.
+GITHUB_PAGES_MAP_URL = "https://korea-cho.github.io/NPL_Land_Map/map.html"
 
 st.set_page_config(page_title="다중 지번 지적도 조회", layout="wide")
 
@@ -319,84 +324,19 @@ else:
 # =========================================================
 st.title("다중 지번 지적도 조회")
 
-markers_json = json.dumps(st.session_state.parcels, ensure_ascii=False)
+# components.html()은 about:srcdoc 안에서 실행되어 네이버/카카오 도메인 인증이
+# 원천적으로 통과될 수 없으므로, 실제 도메인(GitHub Pages)에 올라간 map.html을
+# iframe(src=...)으로 불러오는 방식으로 렌더링합니다.
+data_param = urllib.parse.quote(json.dumps(st.session_state.parcels, ensure_ascii=False))
+iframe_url = (
+    f"{GITHUB_PAGES_MAP_URL}"
+    f"?provider={st.session_state.map_provider}"
+    f"&naverId={urllib.parse.quote(NAVER_CLIENT_ID)}"
+    f"&kakaoKey={urllib.parse.quote(KAKAO_JS_KEY)}"
+    f"&data={data_param}"
+)
 
-if st.session_state.map_provider == "naver":
-    map_html = f"""
-    <div id="map" style="width:100%; height:720px; border-radius:8px; overflow:hidden;"></div>
-    <script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId={NAVER_CLIENT_ID}"></script>
-    <script>
-      var parcels = {markers_json};
-      var map = new naver.maps.Map('map', {{
-        center: new naver.maps.LatLng(36.5, 127.8),
-        zoom: 7
-      }});
-      var cadastral = new naver.maps.CadastralLayer();
-      cadastral.setMap(map);
-
-      var bounds = new naver.maps.LatLngBounds();
-      parcels.forEach(function(p, idx) {{
-        var pos = new naver.maps.LatLng(p.lat, p.lng);
-        bounds.extend(pos);
-        var marker = new naver.maps.Marker({{
-          position: pos,
-          map: map,
-          icon: {{
-            content: '<div style="background:' + p.color + ';color:#fff;border-radius:50%;' +
-                     'width:26px;height:26px;display:flex;align-items:center;justify-content:center;' +
-                     'font-weight:bold;font-size:12px;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.3);">' +
-                     (idx + 1) + '</div>',
-            anchor: new naver.maps.Point(13, 13)
-          }}
-        }});
-        var infowindow = new naver.maps.InfoWindow({{
-          content: '<div style="padding:6px 10px;font-size:13px;">' + p.address + '</div>'
-        }});
-        naver.maps.Event.addListener(marker, 'click', function() {{
-          infowindow.open(map, marker);
-        }});
-      }});
-      if (parcels.length > 0) {{
-        map.fitBounds(bounds);
-      }}
-    </script>
-    """
-else:
-    map_html = f"""
-    <div id="map" style="width:100%; height:720px; border-radius:8px; overflow:hidden;"></div>
-    <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_JS_KEY}&libraries=services"></script>
-    <script>
-      var parcels = {markers_json};
-      var container = document.getElementById('map');
-      var map = new kakao.maps.Map(container, {{
-        center: new kakao.maps.LatLng(36.5, 127.8),
-        level: 12
-      }});
-      map.addOverlayMapTypeId(kakao.maps.MapTypeId.USE_DISTRICT);
-
-      var bounds = new kakao.maps.LatLngBounds();
-      parcels.forEach(function(p, idx) {{
-        var pos = new kakao.maps.LatLng(p.lat, p.lng);
-        bounds.extend(pos);
-        var el = document.createElement('div');
-        el.style.cssText = 'background:' + p.color + ';color:#fff;border-radius:50%;' +
-                            'width:26px;height:26px;display:flex;align-items:center;justify-content:center;' +
-                            'font-weight:bold;font-size:12px;border:2px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.3);';
-        el.innerText = (idx + 1);
-        var overlay = new kakao.maps.CustomOverlay({{ position: pos, content: el }});
-        overlay.setMap(map);
-
-        kakao.maps.event.addListener(overlay, 'click', function() {{
-          alert(p.address);
-        }});
-      }});
-      if (parcels.length > 0) {{
-        map.setBounds(bounds);
-      }}
-    </script>
-    """
-
-components.html(map_html, height=730, scrolling=False)
+components.iframe(iframe_url, height=730, scrolling=False)
 
 st.caption(
     "※ 자동차 거리 계산은 지도 선택과 무관하게 항상 네이버 Directions 15로 계산됩니다. "
