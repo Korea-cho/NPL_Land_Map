@@ -336,30 +336,38 @@ if len(st.session_state.parcels) >= 2:
 else:
     st.sidebar.info("2개 이상 지번을 등록해야 거리 계산이 가능합니다.")
 
+st.sidebar.caption(
+    "※ 자동차 거리 계산은 지도 선택과 무관하게 항상 네이버 Directions 15로 계산됩니다. "
+    "※ 지도 위 거리·면적·반경 측정은 좌표 기반 근사값이라 참고용입니다. "
+    "※ 새로고침하면 등록된 지번 목록은 초기화됩니다."
+)
+
 
 # =========================================================
 # 6. 지도 렌더링 (선택된 지도사에 따라 SDK 분기)
 # =========================================================
-# 지도를 화면에 최대한 크게 보이도록 여백을 줄이고, 상단 헤더/푸터를 숨깁니다.
-# (좌측 사이드바는 Streamlit 기본 기능으로 이미 접었다 펼 수 있습니다 - 사이드바 상단의 « 화살표)
+# 제목 없이, 지도가 화면 전체(사이드바를 뺀 나머지 영역)를 여백 없이 채우도록 만듭니다.
+# 좌측 사이드바는 Streamlit 기본 기능으로 이미 접었다 펼 수 있고, 접으면 자동으로
+# 메인 영역 폭이 넓어지면서 이 CSS가 지도를 그 크기에 맞춰 다시 채웁니다.
 st.markdown(
     """
     <style>
-      .block-container { padding-top: 1.2rem; padding-bottom: 0.5rem; }
+      .block-container { padding: 0 !important; max-width: 100% !important; }
       #MainMenu { visibility: hidden; }
       footer { visibility: hidden; }
-      /* header는 사이드바를 다시 펼치는 버튼(») 을 포함하고 있어 숨기지 않습니다 */
-      /* components.iframe이 만드는 iframe을 src로 특정해서 높이를 화면에 맞게 확대 */
+      div[data-testid="stVerticalBlock"] { gap: 0 !important; }
+      div[data-testid="element-container"] { margin: 0 !important; }
+      /* components.iframe이 만드는 iframe을 src로 특정해서 화면 전체를 채우도록 확대 */
       iframe[src*="korea-cho.github.io"] {
-        height: calc(100vh - 130px) !important;
-        min-height: 600px;
+        width: 100% !important;
+        height: calc(100vh - 40px) !important;
+        min-height: 500px;
+        display: block;
       }
     </style>
     """,
     unsafe_allow_html=True,
 )
-
-st.title("다중 지번 지적도 조회")
 
 # components.html()은 about:srcdoc 안에서 실행되어 네이버/카카오 도메인 인증이
 # 원천적으로 통과될 수 없으므로, 실제 도메인(GitHub Pages)에 올라간 map.html을
@@ -384,8 +392,3 @@ iframe_url = (
 )
 
 components.iframe(iframe_url, height=900, scrolling=False)
-
-st.caption(
-    "※ 자동차 거리 계산은 지도 선택과 무관하게 항상 네이버 Directions 15로 계산됩니다. "
-    "※ 새로고침하면 등록된 지번 목록은 초기화됩니다."
-)
