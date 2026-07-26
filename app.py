@@ -22,6 +22,12 @@ EXCEL_COLORS = [
 SHAPES = ["circle", "square", "triangle", "star"]
 SHAPE_LABEL = {"circle": "● 동그라미", "square": "■ 네모", "triangle": "▲ 세모", "star": "★ 별표"}
 
+# 엑셀 표준 색상 빠른 선택용 (이모지는 근사치 표시용이며 실제 적용 색상은 EXCEL_COLORS의 정확한 hex 값입니다)
+EXCEL_COLOR_LABELS = [
+    "🟥 다크 레드", "🔴 빨강", "🟠 주황", "🟡 노랑", "🟢 연두",
+    "🟩 녹색", "🔵 연한 파랑", "🔷 파랑", "🟦 진한 파랑", "🟣 자주",
+]
+
 NAVER_CLIENT_ID = st.secrets.get("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = st.secrets.get("NAVER_CLIENT_SECRET", "")
 KAKAO_JS_KEY = st.secrets.get("KAKAO_JS_KEY", "")
@@ -280,10 +286,22 @@ else:
                 format_func=lambda s: SHAPE_LABEL[s],
                 key=f"shape_{p['id']}", label_visibility="collapsed",
             )
-            new_color = row_r.color_picker(
-                "색상", value=p["color"], key=f"color_{p['id']}", label_visibility="collapsed",
+            # 엑셀 표준 색상 팔레트에서 빠르게 선택 (현재 색상이 팔레트에 있으면 해당 항목 표시)
+            current_idx = EXCEL_COLORS.index(p["color"]) if p["color"] in EXCEL_COLORS else 0
+            picked_idx = row_r.selectbox(
+                "색상(엑셀 팔레트)", list(range(len(EXCEL_COLORS))), index=current_idx,
+                format_func=lambda i: EXCEL_COLOR_LABELS[i],
+                key=f"palette_{p['id']}", label_visibility="collapsed",
             )
-            p["shape"], p["color"] = new_shape, new_color
+            palette_color = EXCEL_COLORS[picked_idx]
+
+            custom_color = st.color_picker(
+                "사용자 지정 색상", value=p["color"], key=f"color_{p['id']}",
+                label_visibility="collapsed",
+            )
+            # 팔레트를 새로 선택했으면 팔레트 색을, 커스텀 피커를 직접 바꿨으면 그 값을 우선 적용
+            p["shape"] = new_shape
+            p["color"] = palette_color if palette_color != p["color"] else custom_color
 
     if delete_idx is not None:
         st.session_state.parcels.pop(delete_idx)
@@ -322,6 +340,25 @@ else:
 # =========================================================
 # 6. 지도 렌더링 (선택된 지도사에 따라 SDK 분기)
 # =========================================================
+# 지도를 화면에 최대한 크게 보이도록 여백을 줄이고, 상단 헤더/푸터를 숨깁니다.
+# (좌측 사이드바는 Streamlit 기본 기능으로 이미 접었다 펼 수 있습니다 - 사이드바 상단의 « 화살표)
+st.markdown(
+    """
+    <style>
+      .block-container { padding-top: 1.2rem; padding-bottom: 0.5rem; }
+      #MainMenu { visibility: hidden; }
+      footer { visibility: hidden; }
+      /* header는 사이드바를 다시 펼치는 버튼(») 을 포함하고 있어 숨기지 않습니다 */
+      /* components.iframe이 만드는 iframe을 src로 특정해서 높이를 화면에 맞게 확대 */
+      iframe[src*="korea-cho.github.io"] {
+        height: calc(100vh - 130px) !important;
+        min-height: 600px;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("다중 지번 지적도 조회")
 
 # components.html()은 about:srcdoc 안에서 실행되어 네이버/카카오 도메인 인증이
@@ -346,7 +383,7 @@ iframe_url = (
     f"&data={data_param}"
 )
 
-components.iframe(iframe_url, height=730, scrolling=False)
+components.iframe(iframe_url, height=900, scrolling=False)
 
 st.caption(
     "※ 자동차 거리 계산은 지도 선택과 무관하게 항상 네이버 Directions 15로 계산됩니다. "
