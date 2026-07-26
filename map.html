@@ -184,7 +184,7 @@
      네이버 지도
   ========================================================= */
   function renderNaver() {
-    loadScript('https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=' + naverId + '&submodules=panorama', function () {
+    loadScript('https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=' + naverId, function () {
       const map = new naver.maps.Map('map', {
         center: new naver.maps.LatLng(36.5, 127.8),
         zoom: 7,
@@ -318,12 +318,23 @@
       document.getElementById('toolRadius').addEventListener('click', () => startTool('radius', 'toolRadius'));
 
       // ---- 로드뷰(파노라마) ----
+      // panorama 서브모듈은 초기 지도 로딩에 포함시키지 않고, 로드뷰를 처음 켤 때만 별도로 불러옵니다.
+      // (초기 로딩에 포함시켰더니 지도 자체가 아예 안 뜨는 문제가 있어 분리했습니다)
       const streetLayer = new naver.maps.StreetLayer();
       const roadviewDiv = document.getElementById('roadview');
       const rvInner = document.getElementById('rvInner');
       let panorama = null;
       let roadviewOn = false;
       let rvClickListener = null;
+      let panoramaLoaded = false;
+
+      function ensurePanoramaLoaded(cb) {
+        if (panoramaLoaded || (window.naver && naver.maps && naver.maps.Panorama)) { cb(); return; }
+        loadScript('https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=' + naverId + '&submodules=panorama', function () {
+          panoramaLoaded = true;
+          cb();
+        });
+      }
 
       document.getElementById('toolRoadview').addEventListener('click', function () {
         roadviewOn = !roadviewOn;
@@ -332,14 +343,16 @@
           streetLayer.setMap(map);
           showInfo('로드뷰를 사용할 위치를 지도에서 클릭하세요.');
           rvClickListener = naver.maps.Event.addListener(map, 'click', function (e) {
-            roadviewDiv.classList.add('open');
-            setTimeout(() => {
-              if (!panorama) {
-                panorama = new naver.maps.Panorama(rvInner, { position: e.coord, pov: { pan: 0, tilt: 0, fov: 100 } });
-              } else {
-                panorama.setPosition(e.coord);
-              }
-            }, 210);
+            ensurePanoramaLoaded(function () {
+              roadviewDiv.classList.add('open');
+              setTimeout(() => {
+                if (!panorama) {
+                  panorama = new naver.maps.Panorama(rvInner, { position: e.coord, pov: { pan: 0, tilt: 0, fov: 100 } });
+                } else {
+                  panorama.setPosition(e.coord);
+                }
+              }, 210);
+            });
           });
         } else {
           streetLayer.setMap(null);
