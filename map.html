@@ -226,7 +226,8 @@
             map: map, paths: path,
             fillColor: p.color, fillOpacity: 0.25, strokeColor: p.color, strokeWeight: 2
           });
-          path.forEach(pt => bounds.extend(pt));
+          // 화면 맞춤 기준(bounds)에는 폴리곤을 포함시키지 않습니다 - VWorld 조회 성공/실패에 따라
+          // 매번 화면 위치·축척이 달라지는 문제가 있어, 항상 마커 위치만으로 화면을 잡습니다.
         }
 
         const marker = new naver.maps.Marker({
@@ -242,6 +243,10 @@
         if (stored && stored.idsKey === idsKey) {
           map.setCenter(new naver.maps.LatLng(stored.lat, stored.lng));
           map.setZoom(stored.zoom);
+        } else if (parcels.length === 1) {
+          // 지번이 1개일 때는 항상 동일한 줌으로 고정 (bounds 기반 fitBounds는 점 하나라 매번 결과가 달라짐)
+          map.setCenter(new naver.maps.LatLng(parcels[0].lat, parcels[0].lng));
+          map.setZoom(18);
         } else {
           map.fitBounds(bounds);
         }
@@ -259,7 +264,7 @@
 
       // ---- 지도 유형 전환 (네이버: 일반/위성/지형) ----
       document.getElementById('mapTypeGroupNaver').style.display = 'flex';
-      const typeMap = { normal: naver.maps.MapTypeId.NORMAL, satellite: naver.maps.MapTypeId.SATELLITE, terrain: naver.maps.MapTypeId.TERRAIN };
+      const typeMap = { normal: naver.maps.MapTypeId.NORMAL, satellite: naver.maps.MapTypeId.HYBRID, terrain: naver.maps.MapTypeId.TERRAIN };
       document.querySelectorAll('#mapTypeGroupNaver button').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#mapTypeGroupNaver button').forEach(b => b.classList.remove('active'));
@@ -442,7 +447,8 @@
               map: map, path: path,
               fillColor: p.color, fillOpacity: 0.25, strokeColor: p.color, strokeWeight: 2
             });
-            path.forEach(pt => bounds.extend(pt));
+            // 화면 맞춤 기준(bounds)에는 폴리곤을 포함시키지 않습니다 - VWorld 조회 성공/실패에 따라
+            // 매번 화면 위치·축척이 달라지는 문제가 있어, 항상 마커 위치만으로 화면을 잡습니다.
           }
 
           const el = document.createElement('div');
@@ -463,6 +469,10 @@
           if (stored && stored.idsKey === idsKey) {
             map.setCenter(new kakao.maps.LatLng(stored.lat, stored.lng));
             map.setLevel(stored.level);
+          } else if (parcels.length === 1) {
+            // 지번이 1개일 때는 항상 동일한 레벨로 고정 (setBounds는 점 하나라 매번 결과가 달라짐)
+            map.setCenter(new kakao.maps.LatLng(parcels[0].lat, parcels[0].lng));
+            map.setLevel(3);
           } else {
             map.setBounds(bounds);
           }
@@ -479,7 +489,7 @@
 
         // ---- 지도 유형 전환 (카카오: 지도/스카이뷰) ----
         document.getElementById('mapTypeGroupKakao').style.display = 'flex';
-        const typeMap = { normal: kakao.maps.MapTypeId.ROADMAP, satellite: kakao.maps.MapTypeId.SKYVIEW };
+        const typeMap = { normal: kakao.maps.MapTypeId.ROADMAP, satellite: kakao.maps.MapTypeId.HYBRID };
         document.querySelectorAll('#mapTypeGroupKakao button').forEach(btn => {
           btn.addEventListener('click', () => {
             document.querySelectorAll('#mapTypeGroupKakao button').forEach(b => b.classList.remove('active'));
