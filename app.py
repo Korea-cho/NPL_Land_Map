@@ -203,6 +203,7 @@ def get_parcel_polygon(lat: float, lng: float):
             url, params=params, timeout=6,
             headers={"Referer": "https://korea-cho.github.io/"},
         )
+        st.session_state["_vworld_debug"] = r.text[:800]
         data = r.json()
         features = (
             data.get("response", {})
@@ -222,7 +223,8 @@ def get_parcel_polygon(lat: float, lng: float):
             ring = ring[0]
         area_m2 = _polygon_area_m2(ring)
         return ring, area_m2
-    except Exception:
+    except Exception as e:
+        st.session_state["_vworld_debug"] = f"예외 발생: {e}"
         return None, None
 
 
@@ -308,18 +310,6 @@ if st.sidebar.button("일괄 등록", use_container_width=True):
     if failed:
         st.sidebar.warning("주소를 찾을 수 없습니다:\n" + "\n".join(failed))
 
-with st.sidebar.expander("📌 좌표로 지번 추가"):
-    c1, c2 = st.columns(2)
-    lat_in = c1.number_input("위도(lat)", value=37.5665, format="%.6f")
-    lng_in = c2.number_input("경도(lng)", value=126.9780, format="%.6f")
-    if st.button("이 좌표의 지번 찾아서 추가", use_container_width=True):
-        addr = reverse_geocode(lat_in, lng_in, st.session_state.map_provider)
-        if addr:
-            _add_parcel(addr, lat_in, lng_in)
-            st.success(f"등록됨: {addr}")
-        else:
-            st.error("해당 좌표의 주소를 찾을 수 없습니다.")
-
 if st.session_state.parcels:
     delete_idx = None
     palette_css_rules = []
@@ -337,8 +327,7 @@ if st.session_state.parcels:
             color_cols = st.columns(len(EXCEL_COLORS), gap="small")
             for ci, c_hex in enumerate(EXCEL_COLORS):
                 pal_key = f"palette_{p['id']}_{ci}"
-                mark = "✓" if c_hex == p["color"] else " "
-                if color_cols[ci].button(mark, key=pal_key):
+                if color_cols[ci].button(" ", key=pal_key):
                     p["color"] = c_hex
                 # 이 버튼의 실제 배경을 해당 색상 hex로 정확히 지정 (key 기반 클래스로 특정)
                 palette_css_rules.append(
@@ -357,11 +346,10 @@ if st.session_state.parcels:
           }}
           [class*="st-key-palette_"] button {{
             border-radius: 2px !important;
-            width: 100% !important; height: 1.1rem !important; min-height: 1.1rem !important;
-            padding: 0 !important; margin: 0 !important; font-size: 0.65rem !important;
-            line-height: 1 !important; color: #fff !important;
+            width: 100% !important; height: 1.5rem !important; min-height: 1.5rem !important;
+            padding: 0 !important; margin: 0 !important;
           }}
-          section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] {{ gap: 0.2rem !important; }}
+          section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] {{ gap: 0.12rem !important; }}
           {" ".join(palette_css_rules)}
         </style>
         """,
@@ -375,6 +363,10 @@ if st.session_state.parcels:
     if st.sidebar.button("🗑️ 전체 삭제", use_container_width=True):
         st.session_state.parcels = []
         st.rerun()
+
+    if any(p.get("area_m2") is None for p in st.session_state.parcels) and "_vworld_debug" in st.session_state:
+        with st.sidebar.expander("⚠️ 면적이 안 나오는 지번이 있습니다 - 원인 확인용"):
+            st.code(st.session_state["_vworld_debug"])
 
 if len(st.session_state.parcels) >= 2:
     opts = {f"{i + 1}. {p['address']}": i for i, p in enumerate(st.session_state.parcels)}

@@ -210,6 +210,19 @@
       let cadastral = new naver.maps.CadastralLayer();
       let cadastralOn = false;
 
+      // ---- 지도 유형 전환 (네이버: 일반/위성/지형) - 뷰 복원에서 쓰므로 먼저 정의 ----
+      document.getElementById('mapTypeGroupNaver').style.display = 'flex';
+      const typeMap = { normal: naver.maps.MapTypeId.NORMAL, satellite: naver.maps.MapTypeId.HYBRID, terrain: naver.maps.MapTypeId.TERRAIN };
+      function setActiveMapTypeBtn(typeKey) {
+        document.querySelectorAll('#mapTypeGroupNaver button').forEach(b => b.classList.toggle('active', b.dataset.type === typeKey));
+      }
+      document.querySelectorAll('#mapTypeGroupNaver button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          setActiveMapTypeBtn(btn.dataset.type);
+          map.setMapTypeId(typeMap[btn.dataset.type]);
+        });
+      });
+
       const bounds = new naver.maps.LatLngBounds();
       const storageKey = 'nplmap_naver_view';
       const idsKey = parcels.map(p => p.id + ':' + p.lat.toFixed(6) + ':' + p.lng.toFixed(6)).join(',');
@@ -243,10 +256,20 @@
         if (stored && stored.idsKey === idsKey) {
           map.setCenter(new naver.maps.LatLng(stored.lat, stored.lng));
           map.setZoom(stored.zoom);
+          if (stored.mapType && typeMap[stored.mapType]) {
+            map.setMapTypeId(typeMap[stored.mapType]);
+            setActiveMapTypeBtn(stored.mapType);
+          }
         } else if (parcels.length === 1) {
-          // 지번이 1개일 때는 항상 동일한 줌으로 고정 (bounds 기반 fitBounds는 점 하나라 매번 결과가 달라짐)
-          map.setCenter(new naver.maps.LatLng(parcels[0].lat, parcels[0].lng));
-          map.setZoom(18);
+          // 점 하나짜리 bounds는 provider마다 결과가 달라서, 실제 거리 기준(약 70m) 상자를 만들어 fitBounds
+          const p0 = parcels[0];
+          const dLat = 0.00065;
+          const dLng = 0.00065 / Math.cos(p0.lat * Math.PI / 180);
+          const singleBounds = new naver.maps.LatLngBounds(
+            new naver.maps.LatLng(p0.lat - dLat, p0.lng - dLng),
+            new naver.maps.LatLng(p0.lat + dLat, p0.lng + dLng)
+          );
+          map.fitBounds(singleBounds);
         } else {
           map.fitBounds(bounds);
         }
@@ -254,24 +277,17 @@
 
       naver.maps.Event.addListener(map, 'idle', function () {
         const c = map.getCenter();
+        const activeBtn = document.querySelector('#mapTypeGroupNaver button.active');
         try {
-          localStorage.setItem(storageKey, JSON.stringify({ idsKey: idsKey, lat: c.y, lng: c.x, zoom: map.getZoom() }));
+          localStorage.setItem(storageKey, JSON.stringify({
+            idsKey: idsKey, lat: c.y, lng: c.x, zoom: map.getZoom(),
+            mapType: activeBtn ? activeBtn.dataset.type : 'normal',
+          }));
         } catch (e) {}
       });
 
       // 크기 변화(사이드바 접기/펼치기 등) 감지 후 지도 재배치
       observeResize(document.getElementById('map'), () => { naver.maps.Event.trigger(map, 'resize'); });
-
-      // ---- 지도 유형 전환 (네이버: 일반/위성/지형) ----
-      document.getElementById('mapTypeGroupNaver').style.display = 'flex';
-      const typeMap = { normal: naver.maps.MapTypeId.NORMAL, satellite: naver.maps.MapTypeId.HYBRID, terrain: naver.maps.MapTypeId.TERRAIN };
-      document.querySelectorAll('#mapTypeGroupNaver button').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('#mapTypeGroupNaver button').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          map.setMapTypeId(typeMap[btn.dataset.type]);
-        });
-      });
 
       // ---- 지적편집도 토글 ----
       document.getElementById('cadastralToggle').addEventListener('click', function () {
@@ -431,6 +447,19 @@
         });
         let cadastralOn = false;
 
+        // ---- 지도 유형 전환 (카카오: 지도/스카이뷰) - 뷰 복원에서 쓰므로 먼저 정의 ----
+        document.getElementById('mapTypeGroupKakao').style.display = 'flex';
+        const typeMap = { normal: kakao.maps.MapTypeId.ROADMAP, satellite: kakao.maps.MapTypeId.HYBRID };
+        function setActiveMapTypeBtn(typeKey) {
+          document.querySelectorAll('#mapTypeGroupKakao button').forEach(b => b.classList.toggle('active', b.dataset.type === typeKey));
+        }
+        document.querySelectorAll('#mapTypeGroupKakao button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            setActiveMapTypeBtn(btn.dataset.type);
+            map.setMapTypeId(typeMap[btn.dataset.type]);
+          });
+        });
+
         const bounds = new kakao.maps.LatLngBounds();
         const storageKey = 'nplmap_kakao_view';
         const idsKey = parcels.map(p => p.id + ':' + p.lat.toFixed(6) + ':' + p.lng.toFixed(6)).join(',');
@@ -469,10 +498,19 @@
           if (stored && stored.idsKey === idsKey) {
             map.setCenter(new kakao.maps.LatLng(stored.lat, stored.lng));
             map.setLevel(stored.level);
+            if (stored.mapType && typeMap[stored.mapType]) {
+              map.setMapTypeId(typeMap[stored.mapType]);
+              setActiveMapTypeBtn(stored.mapType);
+            }
           } else if (parcels.length === 1) {
-            // 지번이 1개일 때는 항상 동일한 레벨로 고정 (setBounds는 점 하나라 매번 결과가 달라짐)
-            map.setCenter(new kakao.maps.LatLng(parcels[0].lat, parcels[0].lng));
-            map.setLevel(3);
+            const p0 = parcels[0];
+            const dLat = 0.00065;
+            const dLng = 0.00065 / Math.cos(p0.lat * Math.PI / 180);
+            const singleBounds = new kakao.maps.LatLngBounds(
+              new kakao.maps.LatLng(p0.lat - dLat, p0.lng - dLng),
+              new kakao.maps.LatLng(p0.lat + dLat, p0.lng + dLng)
+            );
+            map.setBounds(singleBounds);
           } else {
             map.setBounds(bounds);
           }
@@ -480,23 +518,16 @@
 
         kakao.maps.event.addListener(map, 'idle', function () {
           const c = map.getCenter();
+          const activeBtn = document.querySelector('#mapTypeGroupKakao button.active');
           try {
-            localStorage.setItem(storageKey, JSON.stringify({ idsKey: idsKey, lat: c.getLat(), lng: c.getLng(), level: map.getLevel() }));
+            localStorage.setItem(storageKey, JSON.stringify({
+              idsKey: idsKey, lat: c.getLat(), lng: c.getLng(), level: map.getLevel(),
+              mapType: activeBtn ? activeBtn.dataset.type : 'normal',
+            }));
           } catch (e) {}
         });
 
         observeResize(document.getElementById('map'), () => { map.relayout(); });
-
-        // ---- 지도 유형 전환 (카카오: 지도/스카이뷰) ----
-        document.getElementById('mapTypeGroupKakao').style.display = 'flex';
-        const typeMap = { normal: kakao.maps.MapTypeId.ROADMAP, satellite: kakao.maps.MapTypeId.HYBRID };
-        document.querySelectorAll('#mapTypeGroupKakao button').forEach(btn => {
-          btn.addEventListener('click', () => {
-            document.querySelectorAll('#mapTypeGroupKakao button').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            map.setMapTypeId(typeMap[btn.dataset.type]);
-          });
-        });
 
         // ---- 지적편집도 토글 ----
         document.getElementById('cadastralToggle').addEventListener('click', function () {
