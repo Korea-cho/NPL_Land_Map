@@ -115,6 +115,7 @@
   const provider = qs.get('provider') || 'naver';
   const naverId = b64UrlDecode(qs.get('naverId') || '');
   const kakaoKey = b64UrlDecode(qs.get('kakaoKey') || '');
+  const vworldKey = b64UrlDecode(qs.get('vworldKey') || '');
   let parcels = [];
   try {
     parcels = JSON.parse(b64UrlDecode(qs.get('data') || '') || '[]');
@@ -145,6 +146,40 @@
   function badgeHTML(shape, color, label) {
     const cls = 'shape-' + (shape || 'circle');
     return '<div class="shape-badge ' + cls + '" style="background:' + color + ';">' + label + '</div>';
+  }
+
+  // ---- VWorld 지적도 폴리곤 (JSONP, 브라우저=사용자 IP에서 직접 호출 - 서버IP는 VWorld가 차단함) ----
+  function vworldJsonp(params, cb) {
+    const cbName = 'vwcb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+    window[cbName] = function (data) {
+      cb(data);
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    };
+    const qs2 = new URLSearchParams(Object.assign({}, params, { callback: cbName }));
+    const script = document.createElement('script');
+    script.src = 'https://api.vworld.kr/req/data?' + qs2.toString();
+    script.onerror = function () { cb(null); delete window[cbName]; };
+    document.head.appendChild(script);
+  }
+
+  function fetchParcelPolygon(lat, lng, cb) {
+    if (!vworldKey) { cb(null); return; }
+    vworldJsonp({
+      service: 'data', request: 'GetFeature', data: 'LP_PA_CBND_BUBUN',
+      key: vworldKey, geomFilter: 'POINT(' + lng + ' ' + lat + ')',
+      size: 1, format: 'json', crs: 'EPSG:4326',
+    }, function (data) {
+      try {
+        const features = data.response.result.featureCollection.features;
+        if (!features || !features.length) { cb(null); return; }
+        let ring = features[0].geometry.coordinates[0];
+        while (ring && Array.isArray(ring[0][0])) ring = ring[0];
+        cb(ring); // [[lng,lat], ...]
+      } catch (e) {
+        cb(null);
+      }
+    });
   }
 
   // ---- 공통 거리/면적 계산 (구면 근사, 참고용 값) ----
@@ -220,6 +255,7 @@
         btn.addEventListener('click', () => {
           setActiveMapTypeBtn(btn.dataset.type);
           map.setMapTypeId(typeMap[btn.dataset.type]);
+          if (typeof saveView === 'function') saveView();
         });
       });
 
@@ -233,22 +269,22 @@
         const pos = new naver.maps.LatLng(p.lat, p.lng);
         bounds.extend(pos);
 
-        if (p.polygon && p.polygon.length >= 3) {
-          const path = p.polygon.map(c => new naver.maps.LatLng(c[1], c[0]));
+        // VWorld 지적도 경계선 - 브라우저(사용자 IP)에서 비동기로 조회 후 그림
+        // (화면 맞춤 기준에는 포함시키지 않아, 조회 성공/실패와 무관하게 화면 위치는 항상 동일합니다)
+        fetchParcelPolygon(p.lat, p.lng, function (ring) {
+          if (!ring || ring.length < 3) return;
+          const path = ring.map(c => new naver.maps.LatLng(c[1], c[0]));
           new naver.maps.Polygon({
             map: map, paths: path,
             fillColor: p.color, fillOpacity: 0.25, strokeColor: p.color, strokeWeight: 2
           });
-          // 화면 맞춤 기준(bounds)에는 폴리곤을 포함시키지 않습니다 - VWorld 조회 성공/실패에 따라
-          // 매번 화면 위치·축척이 달라지는 문제가 있어, 항상 마커 위치만으로 화면을 잡습니다.
-        }
+        });
 
         const marker = new naver.maps.Marker({
           position: pos, map: map,
           icon: { content: badgeHTML(p.shape, p.color, idx + 1), anchor: new naver.maps.Point(14, 14) }
         });
-        const areaLine = p.area_m2 ? ('<br>' + fmtArea(p.area_m2)) : '';
-        const infowindow = new naver.maps.InfoWindow({ content: '<div style="padding:6px 10px;font-size:13px;">' + p.address + areaLine + '</div>' });
+        const infowindow = new naver.maps.InfoWindow({ content: '<div style="padding:6px 10px;font-size:13px;">' + p.address + '</div>' });
         naver.maps.Event.addListener(marker, 'click', function () { infowindow.open(map, marker); });
       });
 
@@ -275,7 +311,9 @@
         }
       }
 
-      naver.maps.Event.addListener(map, 'idle', function () {
+      naver.maps.Event.addListener(map, 'idle', saveView);
+
+      function saveView() {
         const c = map.getCenter();
         const activeBtn = document.querySelector('#mapTypeGroupNaver button.active');
         try {
@@ -284,7 +322,7 @@
             mapType: activeBtn ? activeBtn.dataset.type : 'normal',
           }));
         } catch (e) {}
-      });
+      }
 
       // 크기 변화(사이드바 접기/펼치기 등) 감지 후 지도 재배치
       observeResize(document.getElementById('map'), () => { naver.maps.Event.trigger(map, 'resize'); });
@@ -457,6 +495,7 @@
           btn.addEventListener('click', () => {
             setActiveMapTypeBtn(btn.dataset.type);
             map.setMapTypeId(typeMap[btn.dataset.type]);
+            if (typeof saveView === 'function') saveView();
           });
         });
 
@@ -470,15 +509,14 @@
           const pos = new kakao.maps.LatLng(p.lat, p.lng);
           bounds.extend(pos);
 
-          if (p.polygon && p.polygon.length >= 3) {
-            const path = p.polygon.map(c => new kakao.maps.LatLng(c[1], c[0]));
+          fetchParcelPolygon(p.lat, p.lng, function (ring) {
+            if (!ring || ring.length < 3) return;
+            const path = ring.map(c => new kakao.maps.LatLng(c[1], c[0]));
             new kakao.maps.Polygon({
               map: map, path: path,
               fillColor: p.color, fillOpacity: 0.25, strokeColor: p.color, strokeWeight: 2
             });
-            // 화면 맞춤 기준(bounds)에는 폴리곤을 포함시키지 않습니다 - VWorld 조회 성공/실패에 따라
-            // 매번 화면 위치·축척이 달라지는 문제가 있어, 항상 마커 위치만으로 화면을 잡습니다.
-          }
+          });
 
           const el = document.createElement('div');
           el.innerHTML = badgeHTML(p.shape, p.color, idx + 1);
@@ -486,8 +524,7 @@
           const overlay = new kakao.maps.CustomOverlay({ position: pos, content: badgeNode });
           overlay.setMap(map);
 
-          const areaLine = p.area_m2 ? ('<br>' + fmtArea(p.area_m2)) : '';
-          const infowindow = new kakao.maps.InfoWindow({ content: '<div style="padding:6px 10px;font-size:13px;">' + p.address + areaLine + '</div>' });
+          const infowindow = new kakao.maps.InfoWindow({ content: '<div style="padding:6px 10px;font-size:13px;">' + p.address + '</div>' });
           badgeNode.addEventListener('click', function () {
             infowindow.setPosition(pos);
             infowindow.open(map);
@@ -516,7 +553,9 @@
           }
         }
 
-        kakao.maps.event.addListener(map, 'idle', function () {
+        kakao.maps.event.addListener(map, 'idle', saveView);
+
+        function saveView() {
           const c = map.getCenter();
           const activeBtn = document.querySelector('#mapTypeGroupKakao button.active');
           try {
@@ -525,7 +564,7 @@
               mapType: activeBtn ? activeBtn.dataset.type : 'normal',
             }));
           } catch (e) {}
-        });
+        }
 
         observeResize(document.getElementById('map'), () => { map.relayout(); });
 

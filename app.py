@@ -84,7 +84,6 @@ def _is_duplicate(address: str, lat: float, lng: float) -> bool:
 def _add_parcel(address: str, lat: float, lng: float):
     if _is_duplicate(address, lat, lng):
         return False
-    polygon, area_m2 = get_parcel_polygon(lat, lng)
     st.session_state.parcels.append({
         "id": _new_id(),
         "address": address,
@@ -92,8 +91,6 @@ def _add_parcel(address: str, lat: float, lng: float):
         "lng": lng,
         "shape": "circle",
         "color": EXCEL_COLORS[0],
-        "polygon": polygon,      # [[lng,lat], ...] 또는 None
-        "area_m2": area_m2,      # float 또는 None
     })
     return True
 
@@ -193,78 +190,10 @@ def reverse_geocode(lat: float, lng: float, provider: str):
     return kakao_reverse_geocode(lat, lng)
 
 
-# VWorld 데이터 API (지적도 폴리곤/면적 조회용 - 기존에 쓰시던 키를 기본값으로 사용, secrets에서 덮어쓰기 가능)
+# VWorld 데이터 API 키 (지적도 폴리곤 조회용). VWorld는 해외 서버 IP를 막기 때문에
+# Streamlit 서버(파이썬)에서 직접 호출하지 않고, map.html(브라우저 = 사용자의 한국 IP)에서
+# 직접 호출합니다. 여기서는 그 페이지에 넘겨줄 키 값만 보관합니다.
 VWORLD_KEY = st.secrets.get("VWORLD_KEY", "B6C48A1E-87C1-3FDB-B35A-C9BA92749595")
-
-
-def get_parcel_polygon(lat: float, lng: float):
-    """해당 좌표를 포함하는 지적 필지의 경계선(폴리곤, [lng,lat] 좌표 리스트)과
-    좌표 기반 근사 면적(m²)을 VWorld 지적도 데이터에서 가져온다. 실패 시 (None, None)."""
-    url = "https://api.vworld.kr/req/data"
-    params = {
-        "service": "data",
-        "request": "GetFeature",
-        "data": "LP_PA_CBND_BUBUN",
-        "key": VWORLD_KEY,
-        "geomFilter": f"POINT({lng} {lat})",
-        "size": 1,
-        "format": "json",
-        "crs": "EPSG:4326",
-    }
-    try:
-        r = requests.get(
-            url, params=params, timeout=6,
-            headers={"Referer": "https://korea-cho.github.io/"},
-        )
-        raw_text = r.text
-        st.session_state["_vworld_debug"] = (
-            f"status_code={r.status_code}\n"
-            f"content-type={r.headers.get('content-type')}\n"
-            f"길이={len(raw_text)}자\n\n"
-            f"{raw_text[:800] if raw_text else '(응답 본문이 비어있음)'}"
-        )
-        data = r.json()
-        features = (
-            data.get("response", {})
-            .get("result", {})
-            .get("featureCollection", {})
-            .get("features", [])
-        )
-        if not features:
-            return None, None
-        geom = features[0].get("geometry", {})
-        coords = geom.get("coordinates")
-        if not coords:
-            return None, None
-        ring = coords[0]
-        # 좌표 배열이 한 겹 더 감싸진 형태(MultiPolygon 등)인 경우 안쪽 링을 사용
-        while ring and isinstance(ring[0][0], list):
-            ring = ring[0]
-        area_m2 = _polygon_area_m2(ring)
-        return ring, area_m2
-    except Exception as e:
-        prev = st.session_state.get("_vworld_debug", "")
-        st.session_state["_vworld_debug"] = f"예외: {e}\n\n[요청/응답 정보]\n{prev}"
-        return None, None
-
-
-def _polygon_area_m2(ring):
-    """[lng,lat] 좌표 리스트의 근사 면적(m²) - 첫 점 기준 평면 근사 + 신발끈 공식."""
-    if not ring or len(ring) < 3:
-        return None
-    r_earth = 6371000
-    lat0 = math.radians(ring[0][1])
-    xy = []
-    for lng_, lat_ in ring:
-        x = r_earth * math.radians(lng_) * math.cos(lat0)
-        y = r_earth * math.radians(lat_)
-        xy.append((x, y))
-    area = 0.0
-    for i in range(len(xy)):
-        x1, y1 = xy[i]
-        x2, y2 = xy[(i + 1) % len(xy)]
-        area += x1 * y2 - x2 * y1
-    return abs(area) / 2
 
 
 # =========================================================
@@ -321,19 +250,14 @@ addr_text = st.sidebar.text_area(
 if st.sidebar.button("일괄 등록", use_container_width=True):
     lines = [ln.strip() for ln in addr_text.split("\n") if ln.strip()]
     failed = []
-    duplicated = []
     for line in lines:
         coord = geocode_address(line, st.session_state.map_provider)
         if coord:
-            added = _add_parcel(line, coord[0], coord[1])
-            if not added:
-                duplicated.append(line)
+            _add_parcel(line, coord[0], coord[1])
         else:
             failed.append(line)
     if failed:
         st.sidebar.warning("주소를 찾을 수 없습니다:\n" + "\n".join(failed))
-    if duplicated:
-        st.sidebar.info("이미 등록되어 건너뜀:\n" + "\n".join(duplicated))
 
 if st.session_state.parcels:
     delete_idx = None
@@ -388,10 +312,6 @@ if st.session_state.parcels:
     if st.sidebar.button("🗑️ 전체 삭제", use_container_width=True):
         st.session_state.parcels = []
         st.rerun()
-
-    if any(p.get("area_m2") is None for p in st.session_state.parcels) and "_vworld_debug" in st.session_state:
-        with st.sidebar.expander("⚠️ 면적이 안 나오는 지번이 있습니다 - 원인 확인용"):
-            st.code(st.session_state["_vworld_debug"])
 
 if len(st.session_state.parcels) >= 2:
     opts = {f"{i + 1}. {p['address']}": i for i, p in enumerate(st.session_state.parcels)}
@@ -456,12 +376,14 @@ def _b64(text: str) -> str:
 data_param = _b64(json.dumps(st.session_state.parcels, ensure_ascii=False))
 naver_id_param = _b64(NAVER_CLIENT_ID)
 kakao_key_param = _b64(KAKAO_JS_KEY)
+vworld_key_param = _b64(VWORLD_KEY)
 
 iframe_url = (
     f"{GITHUB_PAGES_MAP_URL}"
     f"?provider={st.session_state.map_provider}"
     f"&naverId={naver_id_param}"
     f"&kakaoKey={kakao_key_param}"
+    f"&vworldKey={vworld_key_param}"
     f"&data={data_param}"
 )
 
