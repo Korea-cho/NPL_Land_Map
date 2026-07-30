@@ -71,7 +71,19 @@ def _new_id() -> int:
     return st.session_state.next_id - 1
 
 
+def _is_duplicate(address: str, lat: float, lng: float) -> bool:
+    """동일 주소이거나, 좌표가 거의 같으면(약 5m 이내) 중복으로 간주."""
+    for p in st.session_state.parcels:
+        if p["address"].strip() == address.strip():
+            return True
+        if abs(p["lat"] - lat) < 0.00005 and abs(p["lng"] - lng) < 0.00005:
+            return True
+    return False
+
+
 def _add_parcel(address: str, lat: float, lng: float):
+    if _is_duplicate(address, lat, lng):
+        return False
     polygon, area_m2 = get_parcel_polygon(lat, lng)
     st.session_state.parcels.append({
         "id": _new_id(),
@@ -83,6 +95,7 @@ def _add_parcel(address: str, lat: float, lng: float):
         "polygon": polygon,      # [[lng,lat], ...] 또는 None
         "area_m2": area_m2,      # float 또는 None
     })
+    return True
 
 
 # =========================================================
@@ -203,7 +216,13 @@ def get_parcel_polygon(lat: float, lng: float):
             url, params=params, timeout=6,
             headers={"Referer": "https://korea-cho.github.io/"},
         )
-        st.session_state["_vworld_debug"] = r.text[:800]
+        raw_text = r.text
+        st.session_state["_vworld_debug"] = (
+            f"status_code={r.status_code}\n"
+            f"content-type={r.headers.get('content-type')}\n"
+            f"길이={len(raw_text)}자\n\n"
+            f"{raw_text[:800] if raw_text else '(응답 본문이 비어있음)'}"
+        )
         data = r.json()
         features = (
             data.get("response", {})
@@ -224,7 +243,8 @@ def get_parcel_polygon(lat: float, lng: float):
         area_m2 = _polygon_area_m2(ring)
         return ring, area_m2
     except Exception as e:
-        st.session_state["_vworld_debug"] = f"예외 발생: {e}"
+        prev = st.session_state.get("_vworld_debug", "")
+        st.session_state["_vworld_debug"] = f"예외: {e}\n\n[요청/응답 정보]\n{prev}"
         return None, None
 
 
@@ -301,14 +321,19 @@ addr_text = st.sidebar.text_area(
 if st.sidebar.button("일괄 등록", use_container_width=True):
     lines = [ln.strip() for ln in addr_text.split("\n") if ln.strip()]
     failed = []
+    duplicated = []
     for line in lines:
         coord = geocode_address(line, st.session_state.map_provider)
         if coord:
-            _add_parcel(line, coord[0], coord[1])
+            added = _add_parcel(line, coord[0], coord[1])
+            if not added:
+                duplicated.append(line)
         else:
             failed.append(line)
     if failed:
         st.sidebar.warning("주소를 찾을 수 없습니다:\n" + "\n".join(failed))
+    if duplicated:
+        st.sidebar.info("이미 등록되어 건너뜀:\n" + "\n".join(duplicated))
 
 if st.session_state.parcels:
     delete_idx = None
