@@ -20,13 +20,10 @@ EXCEL_COLORS = [
     "#00B050", "#00B0F0", "#0070C0", "#002060", "#7030A0",
 ]
 SHAPES = ["circle", "square", "triangle", "star"]
-SHAPE_LABEL = {"circle": "● 동그라미", "square": "■ 네모", "triangle": "▲ 세모", "star": "★ 별표"}
+SHAPE_ICON = {"circle": "●", "square": "■", "triangle": "▲", "star": "★"}
 
-# 엑셀 표준 색상 빠른 선택용 (이모지는 근사치 표시용이며 실제 적용 색상은 EXCEL_COLORS의 정확한 hex 값입니다)
-EXCEL_COLOR_LABELS = [
-    "🟥 다크 레드", "🔴 빨강", "🟠 주황", "🟡 노랑", "🟢 연두",
-    "🟩 녹색", "🔵 연한 파랑", "🔷 파랑", "🟦 진한 파랑", "🟣 자주",
-]
+# 엑셀 표준 색상 빠른 선택용 (이모지 자체가 곧 그 색상 - 별도 이름 표시는 생략)
+EXCEL_COLOR_ICON = ["🟥", "🔴", "🟠", "🟡", "🟢", "🟩", "🔵", "🔷", "🟦", "🟣"]
 
 NAVER_CLIENT_ID = st.secrets.get("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = st.secrets.get("NAVER_CLIENT_SECRET", "")
@@ -72,6 +69,20 @@ if "next_id" not in st.session_state:
 def _new_id() -> int:
     st.session_state.next_id += 1
     return st.session_state.next_id - 1
+
+
+def _add_parcel(address: str, lat: float, lng: float):
+    polygon, area_m2 = get_parcel_polygon(lat, lng)
+    st.session_state.parcels.append({
+        "id": _new_id(),
+        "address": address,
+        "lat": lat,
+        "lng": lng,
+        "shape": "circle",
+        "color": EXCEL_COLORS[0],
+        "polygon": polygon,      # [[lng,lat], ...] 또는 None
+        "area_m2": area_m2,      # float 또는 None
+    })
 
 
 # =========================================================
@@ -169,6 +180,68 @@ def reverse_geocode(lat: float, lng: float, provider: str):
     return kakao_reverse_geocode(lat, lng)
 
 
+# VWorld 데이터 API (지적도 폴리곤/면적 조회용 - 기존에 쓰시던 키를 기본값으로 사용, secrets에서 덮어쓰기 가능)
+VWORLD_KEY = st.secrets.get("VWORLD_KEY", "B6C48A1E-87C1-3FDB-B35A-C9BA92749595")
+
+
+def get_parcel_polygon(lat: float, lng: float):
+    """해당 좌표를 포함하는 지적 필지의 경계선(폴리곤, [lng,lat] 좌표 리스트)과
+    좌표 기반 근사 면적(m²)을 VWorld 지적도 데이터에서 가져온다. 실패 시 (None, None)."""
+    url = "https://api.vworld.kr/req/data"
+    params = {
+        "service": "data",
+        "request": "GetFeature",
+        "data": "LP_PA_CBND_BUBUN",
+        "key": VWORLD_KEY,
+        "geomFilter": f"POINT({lng} {lat})",
+        "size": 1,
+        "format": "json",
+        "crs": "EPSG:4326",
+    }
+    try:
+        r = requests.get(url, params=params, timeout=6)
+        data = r.json()
+        features = (
+            data.get("response", {})
+            .get("result", {})
+            .get("featureCollection", {})
+            .get("features", [])
+        )
+        if not features:
+            return None, None
+        geom = features[0].get("geometry", {})
+        coords = geom.get("coordinates")
+        if not coords:
+            return None, None
+        ring = coords[0]
+        # 좌표 배열이 한 겹 더 감싸진 형태(MultiPolygon 등)인 경우 안쪽 링을 사용
+        while ring and isinstance(ring[0][0], list):
+            ring = ring[0]
+        area_m2 = _polygon_area_m2(ring)
+        return ring, area_m2
+    except Exception:
+        return None, None
+
+
+def _polygon_area_m2(ring):
+    """[lng,lat] 좌표 리스트의 근사 면적(m²) - 첫 점 기준 평면 근사 + 신발끈 공식."""
+    if not ring or len(ring) < 3:
+        return None
+    r_earth = 6371000
+    lat0 = math.radians(ring[0][1])
+    xy = []
+    for lng_, lat_ in ring:
+        x = r_earth * math.radians(lng_) * math.cos(lat0)
+        y = r_earth * math.radians(lat_)
+        xy.append((x, y))
+    area = 0.0
+    for i in range(len(xy)):
+        x1, y1 = xy[i]
+        x2, y2 = xy[(i + 1) % len(xy)]
+        area += x1 * y2 - x2 * y1
+    return abs(area) / 2
+
+
 # =========================================================
 # 4. 자동차 거리 계산 - 항상 네이버 Directions 15 사용
 # =========================================================
@@ -209,138 +282,96 @@ def haversine_km(p1, p2):
 # =========================================================
 # 5. 사이드바 UI
 # =========================================================
-st.sidebar.header("🗺️ 지도 서비스")
 provider_label = st.sidebar.radio(
-    "지도 표시에 사용할 서비스",
-    ["네이버 지도", "카카오맵"],
+    "지도 서비스", ["네이버 지도", "카카오맵"],
     index=0 if st.session_state.map_provider == "naver" else 1,
-    horizontal=True,
+    horizontal=True, label_visibility="collapsed",
 )
 st.session_state.map_provider = "naver" if provider_label == "네이버 지도" else "kakao"
 
-st.sidebar.divider()
-st.sidebar.header("📍 지번 등록")
 addr_text = st.sidebar.text_area(
-    "지번 주소 목록 (줄바꿈 구분)",
-    height=100,
-    placeholder="예)\n경기도 화성시 향남읍 발안리 100-1\n경기도 화성시 향남읍 발안리 100-2",
+    "지번 등록", height=80, label_visibility="collapsed",
+    placeholder="지번/도로명 주소 (줄바꿈으로 여러 개 입력)",
 )
-if st.sidebar.button("지번 일괄 등록", use_container_width=True):
+if st.sidebar.button("일괄 등록", use_container_width=True):
     lines = [ln.strip() for ln in addr_text.split("\n") if ln.strip()]
     failed = []
     for line in lines:
         coord = geocode_address(line, st.session_state.map_provider)
         if coord:
-            st.session_state.parcels.append({
-                "id": _new_id(),
-                "address": line,
-                "lat": coord[0],
-                "lng": coord[1],
-                "shape": "circle",
-                "color": EXCEL_COLORS[0],
-            })
+            _add_parcel(line, coord[0], coord[1])
         else:
             failed.append(line)
     if failed:
         st.sidebar.warning("주소를 찾을 수 없습니다:\n" + "\n".join(failed))
 
-st.sidebar.divider()
-with st.sidebar.expander("📌 좌표로 지번 추가 (지도에서 위치 확인 후 입력)"):
-    st.caption("지도를 보다가 옆 필지 위치를 알고 싶을 때, 좌표를 입력하면 해당 위치의 지번 주소를 자동으로 찾아 등록합니다.")
+with st.sidebar.expander("📌 좌표로 지번 추가"):
     c1, c2 = st.columns(2)
     lat_in = c1.number_input("위도(lat)", value=37.5665, format="%.6f")
     lng_in = c2.number_input("경도(lng)", value=126.9780, format="%.6f")
     if st.button("이 좌표의 지번 찾아서 추가", use_container_width=True):
         addr = reverse_geocode(lat_in, lng_in, st.session_state.map_provider)
         if addr:
-            st.session_state.parcels.append({
-                "id": _new_id(),
-                "address": addr,
-                "lat": lat_in,
-                "lng": lng_in,
-                "shape": "circle",
-                "color": EXCEL_COLORS[0],
-            })
+            _add_parcel(addr, lat_in, lng_in)
             st.success(f"등록됨: {addr}")
         else:
             st.error("해당 좌표의 주소를 찾을 수 없습니다.")
 
-st.sidebar.divider()
-st.sidebar.header("📋 등록된 지번 목록")
-
-if not st.session_state.parcels:
-    st.sidebar.info("등록된 지번이 없습니다.")
-else:
+if st.session_state.parcels:
     delete_idx = None
     for i, p in enumerate(st.session_state.parcels):
         with st.sidebar.container(border=True):
             top_l, top_r = st.columns([6, 1])
-            top_l.markdown(f"**{i + 1}. {p['address']}**")
-            top_l.caption(f"{p['lat']:.5f}, {p['lng']:.5f}")
+            top_l.markdown(
+                f"<span style='font-size:0.8rem'><b>{i + 1}. {p['address']}</b></span>",
+                unsafe_allow_html=True,
+            )
             if top_r.button("✕", key=f"del_{p['id']}", help="이 지번만 삭제"):
                 delete_idx = i
 
-            row_l, row_r = st.columns([2, 3])
+            row_l, row_r = st.columns([1, 1])
             new_shape = row_l.selectbox(
                 "도형", SHAPES, index=SHAPES.index(p["shape"]),
-                format_func=lambda s: SHAPE_LABEL[s],
+                format_func=lambda s: SHAPE_ICON[s],
                 key=f"shape_{p['id']}", label_visibility="collapsed",
             )
-            # 엑셀 표준 색상 팔레트에서 빠르게 선택 (현재 색상이 팔레트에 있으면 해당 항목 표시)
             current_idx = EXCEL_COLORS.index(p["color"]) if p["color"] in EXCEL_COLORS else 0
             picked_idx = row_r.selectbox(
-                "색상(엑셀 팔레트)", list(range(len(EXCEL_COLORS))), index=current_idx,
-                format_func=lambda i: EXCEL_COLOR_LABELS[i],
+                "색상", list(range(len(EXCEL_COLORS))), index=current_idx,
+                format_func=lambda i: EXCEL_COLOR_ICON[i],
                 key=f"palette_{p['id']}", label_visibility="collapsed",
             )
-            palette_color = EXCEL_COLORS[picked_idx]
-
-            custom_color = st.color_picker(
-                "사용자 지정 색상", value=p["color"], key=f"color_{p['id']}",
-                label_visibility="collapsed",
-            )
-            # 팔레트를 새로 선택했으면 팔레트 색을, 커스텀 피커를 직접 바꿨으면 그 값을 우선 적용
             p["shape"] = new_shape
-            p["color"] = palette_color if palette_color != p["color"] else custom_color
+            p["color"] = EXCEL_COLORS[picked_idx]
 
     if delete_idx is not None:
         st.session_state.parcels.pop(delete_idx)
         st.rerun()
 
-    st.sidebar.divider()
     if st.sidebar.button("🗑️ 전체 삭제", use_container_width=True):
         st.session_state.parcels = []
         st.rerun()
 
-st.sidebar.divider()
-st.sidebar.header("🚗 자동차 거리 계산 (네이버 Directions 15)")
 if len(st.session_state.parcels) >= 2:
     opts = {f"{i + 1}. {p['address']}": i for i, p in enumerate(st.session_state.parcels)}
     keys = list(opts.keys())
-    from_key = st.sidebar.selectbox("출발 지번", keys, key="dist_from")
-    to_key = st.sidebar.selectbox("도착 지번", keys, index=min(1, len(keys) - 1), key="dist_to")
-    if st.sidebar.button("거리/시간 계산하기", use_container_width=True):
-        i1, i2 = opts[from_key], opts[to_key]
-        if i1 == i2:
-            st.sidebar.error("서로 다른 지번을 선택해주세요.")
-        else:
-            p1, p2 = st.session_state.parcels[i1], st.session_state.parcels[i2]
-            result = naver_driving_route((p1["lat"], p1["lng"]), (p2["lat"], p2["lng"]))
-            if result:
-                dist_km, dur_ms = result[0] / 1000, result[1]
-                dur_min = dur_ms / 60000
-                st.sidebar.success(f"🚗 차량 이동거리: **{dist_km:.1f} km**\n⏱️ 예상 소요시간: **{dur_min:.0f}분**")
+    with st.sidebar.expander("🚗 자동차 거리 계산 (네이버)"):
+        from_key = st.selectbox("출발 지번", keys, key="dist_from")
+        to_key = st.selectbox("도착 지번", keys, index=min(1, len(keys) - 1), key="dist_to")
+        if st.button("거리/시간 계산하기", use_container_width=True):
+            i1, i2 = opts[from_key], opts[to_key]
+            if i1 == i2:
+                st.error("서로 다른 지번을 선택해주세요.")
             else:
-                straight = haversine_km((p1["lat"], p1["lng"]), (p2["lat"], p2["lng"]))
-                st.sidebar.warning(f"경로 계산에 실패했습니다 (API 키/네트워크 확인 필요).\n직선거리 참고값: {straight:.1f} km")
-else:
-    st.sidebar.info("2개 이상 지번을 등록해야 거리 계산이 가능합니다.")
-
-st.sidebar.caption(
-    "※ 자동차 거리 계산은 지도 선택과 무관하게 항상 네이버 Directions 15로 계산됩니다. "
-    "※ 지도 위 거리·면적·반경 측정은 좌표 기반 근사값이라 참고용입니다. "
-    "※ 새로고침하면 등록된 지번 목록은 초기화됩니다."
-)
+                p1, p2 = st.session_state.parcels[i1], st.session_state.parcels[i2]
+                result = naver_driving_route((p1["lat"], p1["lng"]), (p2["lat"], p2["lng"]))
+                if result:
+                    dist_km, dur_ms = result[0] / 1000, result[1]
+                    dur_min = dur_ms / 60000
+                    st.success(f"🚗 {dist_km:.1f} km · ⏱️ {dur_min:.0f}분")
+                else:
+                    straight = haversine_km((p1["lat"], p1["lng"]), (p2["lat"], p2["lng"]))
+                    st.warning(f"경로 계산 실패. 직선거리 참고값: {straight:.1f} km")
 
 
 # =========================================================
@@ -353,6 +384,8 @@ st.markdown(
     """
     <style>
       .block-container { padding: 0 !important; max-width: 100% !important; }
+      section[data-testid="stSidebar"] .block-container { padding-top: 0.6rem !important; }
+      section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] { padding: 0.3rem 0.5rem !important; }
       #MainMenu { visibility: hidden; }
       footer { visibility: hidden; }
       div[data-testid="stVerticalBlock"] { gap: 0 !important; }
