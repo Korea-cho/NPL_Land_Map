@@ -199,7 +199,10 @@ def get_parcel_polygon(lat: float, lng: float):
         "crs": "EPSG:4326",
     }
     try:
-        r = requests.get(url, params=params, timeout=6)
+        r = requests.get(
+            url, params=params, timeout=6,
+            headers={"Referer": "https://korea-cho.github.io/"},
+        )
         data = r.json()
         features = (
             data.get("response", {})
@@ -321,28 +324,18 @@ if st.session_state.parcels:
     delete_idx = None
     for i, p in enumerate(st.session_state.parcels):
         with st.sidebar.container(border=True):
-            top_l, top_r = st.columns([6, 1])
+            top_l, top_r = st.columns([8, 1])
             top_l.markdown(
                 f"<span style='font-size:0.8rem'><b>{i + 1}. {p['address']}</b></span>",
                 unsafe_allow_html=True,
             )
-            if top_r.button("✕", key=f"del_{p['id']}", help="이 지번만 삭제"):
+            if top_r.button("✕", key=f"del_{p['id']}", help="삭제"):
                 delete_idx = i
 
-            row_l, row_r = st.columns([1, 1])
-            new_shape = row_l.selectbox(
-                "도형", SHAPES, index=SHAPES.index(p["shape"]),
-                format_func=lambda s: SHAPE_ICON[s],
-                key=f"shape_{p['id']}", label_visibility="collapsed",
-            )
-            current_idx = EXCEL_COLORS.index(p["color"]) if p["color"] in EXCEL_COLORS else 0
-            picked_idx = row_r.selectbox(
-                "색상", list(range(len(EXCEL_COLORS))), index=current_idx,
-                format_func=lambda i: EXCEL_COLOR_ICON[i],
-                key=f"palette_{p['id']}", label_visibility="collapsed",
-            )
-            p["shape"] = new_shape
-            p["color"] = EXCEL_COLORS[picked_idx]
+            color_cols = st.columns(len(EXCEL_COLORS))
+            for ci, (c_hex, c_icon) in enumerate(zip(EXCEL_COLORS, EXCEL_COLOR_ICON)):
+                if color_cols[ci].button(c_icon, key=f"palette_{p['id']}_{ci}"):
+                    p["color"] = c_hex
 
     if delete_idx is not None:
         st.session_state.parcels.pop(delete_idx)
@@ -386,6 +379,16 @@ st.markdown(
       .block-container { padding: 0 !important; max-width: 100% !important; }
       section[data-testid="stSidebar"] .block-container { padding-top: 0.6rem !important; }
       section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] { padding: 0.3rem 0.5rem !important; }
+      /* 지번 카드 안의 버튼(삭제 X, 색상 팔레트)만 작고 둥글게 */
+      div[data-testid="stVerticalBlockBorderWrapper"] button {
+        border-radius: 50% !important;
+        min-height: 1.6rem !important;
+        height: 1.6rem !important;
+        width: 1.6rem !important;
+        padding: 0 !important;
+        font-size: 0.85rem !important;
+        line-height: 1 !important;
+      }
       #MainMenu { visibility: hidden; }
       footer { visibility: hidden; }
       div[data-testid="stVerticalBlock"] { gap: 0 !important; }

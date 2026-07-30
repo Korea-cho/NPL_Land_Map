@@ -89,7 +89,7 @@
       <button data-type="normal" class="active">지도</button>
       <button data-type="satellite">스카이뷰</button>
     </div>
-    <button class="toggle-btn active" id="cadastralToggle">지적편집도 ON</button>
+    <button class="toggle-btn" id="cadastralToggle">지적편집도 OFF</button>
     <div class="btn-group">
       <button id="toolDistance">📏 거리</button>
       <button id="toolArea">📐 면적</button>
@@ -208,8 +208,7 @@
         mapTypeControl: false
       });
       let cadastral = new naver.maps.CadastralLayer();
-      cadastral.setMap(map);
-      let cadastralOn = true;
+      let cadastralOn = false;
 
       const bounds = new naver.maps.LatLngBounds();
       const storageKey = 'nplmap_naver_view';
@@ -425,8 +424,7 @@
           center: new kakao.maps.LatLng(36.5, 127.8),
           level: 12
         });
-        let cadastralOn = true;
-        map.addOverlayMapTypeId(kakao.maps.MapTypeId.USE_DISTRICT);
+        let cadastralOn = false;
 
         const bounds = new kakao.maps.LatLngBounds();
         const storageKey = 'nplmap_kakao_view';
@@ -449,12 +447,13 @@
 
           const el = document.createElement('div');
           el.innerHTML = badgeHTML(p.shape, p.color, idx + 1);
-          const overlay = new kakao.maps.CustomOverlay({ position: pos, content: el.firstChild });
+          const badgeNode = el.firstChild; // 참조를 미리 저장 (CustomOverlay가 넘겨받은 뒤 재부모화하면 el.firstChild는 null이 됨)
+          const overlay = new kakao.maps.CustomOverlay({ position: pos, content: badgeNode });
           overlay.setMap(map);
 
           const areaLine = p.area_m2 ? ('<br>' + fmtArea(p.area_m2)) : '';
           const infowindow = new kakao.maps.InfoWindow({ content: '<div style="padding:6px 10px;font-size:13px;">' + p.address + areaLine + '</div>' });
-          el.firstChild.addEventListener('click', function () {
+          badgeNode.addEventListener('click', function () {
             infowindow.setPosition(pos);
             infowindow.open(map);
           });
