@@ -118,6 +118,19 @@
     parcels = [];
   }
 
+  function observeResize(el, cb) {
+    let last = { w: 0, h: 0 };
+    let scheduled = false;
+    new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (Math.abs(width - last.w) < 2 && Math.abs(height - last.h) < 2) return;
+      last = { w: width, h: height };
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => { scheduled = false; cb(); });
+    }).observe(el);
+  }
+
   function loadScript(src, onload) {
     const s = document.createElement('script');
     s.src = src;
@@ -208,7 +221,7 @@
       if (parcels.length > 0) map.fitBounds(bounds);
 
       // 크기 변화(사이드바 접기/펼치기 등) 감지 후 지도 재배치
-      new ResizeObserver(() => { naver.maps.Event.trigger(map, 'resize'); }).observe(document.getElementById('map'));
+      observeResize(document.getElementById('map'), () => { naver.maps.Event.trigger(map, 'resize'); });
 
       // ---- 지도 유형 전환 ----
       const typeMap = { normal: naver.maps.MapTypeId.NORMAL, satellite: naver.maps.MapTypeId.SATELLITE, terrain: naver.maps.MapTypeId.TERRAIN };
@@ -390,7 +403,7 @@
         });
         if (parcels.length > 0) map.setBounds(bounds);
 
-        new ResizeObserver(() => { map.relayout(); }).observe(document.getElementById('map'));
+        observeResize(document.getElementById('map'), () => { map.relayout(); });
 
         // ---- 지도 유형 전환 ----
         const typeMap = { normal: kakao.maps.MapTypeId.ROADMAP, satellite: kakao.maps.MapTypeId.SKYVIEW, terrain: kakao.maps.MapTypeId.TERRAIN };
