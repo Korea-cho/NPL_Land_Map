@@ -55,31 +55,32 @@ if not check_password():
     st.stop()
 
 # 흰색 배경에서 입력창 경계가 안 보이는 문제 - 어두운 윤곽선 추가.
-# (포커스 시 빨간 아웃라인이 붙던 원인은 테마 primaryColor가 지정 안 돼 기본값(빨강)이 쓰였기 때문 -
-#  config.toml에 primaryColor를 지정해 근본적으로 해결. 아래는 혹시 남아있을 잔여 스타일에 대한 보강.)
-# 사이드바 내 버튼/카드/입력창의 모서리를 전부 직각(0)으로 통일.
+# 포커스 시 아웃라인/박스섀도가 아예 나타나지 않도록 사이드바 전체에 블랑킷으로 제거.
+# 모서리도 사이드바 내 모든 요소를 예외 없이 직각(0)으로 통일.
 st.markdown(
     """
     <style>
       textarea, input[type="text"], input[type="password"] {
         border: 1px solid #6b6f66 !important;
-        border-radius: 0 !important;
       }
-      textarea:focus, input[type="text"]:focus, input[type="password"]:focus,
-      textarea:focus-visible, input:focus-visible {
-        border-color: #6b6f66 !important;
+      section[data-testid="stSidebar"] *:focus,
+      section[data-testid="stSidebar"] *:focus-within,
+      section[data-testid="stSidebar"] *:focus-visible {
+        box-shadow: none !important;
         outline: none !important;
-        box-shadow: none !important;
       }
-      div[data-baseweb="textarea"], div[data-baseweb="input"],
-      div[data-baseweb="textarea"]:focus-within, div[data-baseweb="input"]:focus-within {
-        box-shadow: none !important;
+      section[data-testid="stSidebar"] * {
         border-radius: 0 !important;
       }
-      section[data-testid="stSidebar"] button,
-      section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"],
+      /* 색상 팝오버 내용은 sidebar 바깥의 별도 portal에 렌더링되므로 전역으로 처리 */
       div[data-testid="stPopoverBody"] {
         border-radius: 0 !important;
+      }
+      div[data-testid="stPopoverBody"] *:focus,
+      div[data-testid="stPopoverBody"] *:focus-within,
+      div[data-testid="stPopoverBody"] *:focus-visible {
+        box-shadow: none !important;
+        outline: none !important;
       }
     </style>
     """,
@@ -280,15 +281,13 @@ addr_text = st.sidebar.text_area(
     placeholder="지번/도로명 주소 (줄바꿈으로 여러 개 입력)",
 )
 
-btn_col1, btn_col2 = st.sidebar.columns(2)
-register_clicked = btn_col1.button("일괄 등록", use_container_width=True, key="btn_register")
-clear_all_clicked = btn_col2.button("전체 삭제", use_container_width=True, key="btn_clear_all")
+register_clicked = st.sidebar.button("일괄 등록", use_container_width=True, key="btn_register")
 
 # 버튼 크기를 기존 대비 약 80% 수준으로 축소
 st.markdown(
     """
     <style>
-      .st-key-btn_register button, .st-key-btn_clear_all button {
+      .st-key-btn_register button {
         font-size: 0.8rem !important;
         padding: 0.28rem 0.5rem !important;
         min-height: 2rem !important;
@@ -317,10 +316,6 @@ if register_clicked:
         _add_parcel(display_addr, lat, lng)
     if failed:
         st.sidebar.warning("주소를 찾을 수 없습니다:\n" + "\n".join(failed))
-
-if clear_all_clicked:
-    st.session_state.parcels = []
-    st.rerun()
 
 if st.session_state.parcels:
     palette_css_rules = []
@@ -374,6 +369,10 @@ if st.session_state.parcels:
             width: 13rem !important;
           }}
           div[data-testid="stPopoverBody"] div[data-testid="stHorizontalBlock"] {{ gap: 0.15rem !important; }}
+          div[data-testid="stPopoverBody"] div[data-testid="stVerticalBlock"],
+          div[data-testid="stPopoverBody"] div[data-testid="element-container"] {{
+            margin: 0 !important; padding: 0 !important; gap: 0 !important;
+          }}
           {" ".join(palette_css_rules)}
         </style>
         """,
@@ -434,7 +433,7 @@ st.markdown(
       }
       .block-container { padding: 0 !important; max-width: 100% !important; }
       section[data-testid="stSidebar"] .block-container { padding-top: 0.6rem !important; }
-      section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] { padding: 0.3rem 0.5rem !important; }
+      section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] { padding: 0.15rem 0.5rem 0.3rem 0.25rem !important; }
       #MainMenu { visibility: hidden; }
       footer { visibility: hidden; }
       div[data-testid="stVerticalBlock"] { gap: 0 !important; }
