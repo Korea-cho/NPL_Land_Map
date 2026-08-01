@@ -180,6 +180,7 @@
       key: vworldKey, domain: VWORLD_DOMAIN, geomFilter: 'POINT(' + lng + ' ' + lat + ')',
       size: 1, format: 'json', crs: 'EPSG:4326',
     }, function (data) {
+      console.log('[VWorld GetFeature(폴리곤/PNU) 응답]', JSON.stringify(data));
       try {
         const feature = data.response.result.featureCollection.features[0];
         let ring = feature.geometry.coordinates[0];
@@ -202,7 +203,7 @@
     vworldJsonp('https://api.vworld.kr/ned/data/ladfrlList', {
       key: vworldKey, domain: VWORLD_DOMAIN, format: 'json', pnu: pnu,
     }, function (data) {
-      console.log('[VWorld ladfrlList 응답]', data);
+      console.log('[VWorld ladfrlList 응답]', JSON.stringify(data));
       try {
         const item = data.fields.ladfrlVOList[0];
         result.jimok = item.lndcgrCodeNm || null;
@@ -215,7 +216,7 @@
     vworldJsonp('https://api.vworld.kr/ned/data/getLandUseAttr', {
       key: vworldKey, domain: VWORLD_DOMAIN, format: 'json', numOfRows: 20, pnu: pnu,
     }, function (data) {
-      console.log('[VWorld getLandUseAttr 응답]', data);
+      console.log('[VWorld getLandUseAttr 응답]', JSON.stringify(data));
       try {
         const fields = data.response.fields.field;
         const list = Array.isArray(fields) ? fields : [fields];
@@ -228,7 +229,7 @@
     vworldJsonp('https://api.vworld.kr/ned/data/getLandCharacteristics', {
       key: vworldKey, domain: VWORLD_DOMAIN, format: 'json', stdrYear: new Date().getFullYear(), pnu: pnu,
     }, function (data) {
-      console.log('[VWorld getLandCharacteristics 응답]', data);
+      console.log('[VWorld getLandCharacteristics 응답]', JSON.stringify(data));
       try {
         const field = data.response.fields.field;
         const item = Array.isArray(field) ? field[0] : field;
@@ -246,7 +247,7 @@
         vworldJsonp('https://api.vworld.kr/ned/data/getIndvdLandPriceAttr', {
           key: vworldKey, domain: VWORLD_DOMAIN, format: 'json', stdrYear: yr, pnu: pnu,
         }, function (data) {
-          console.log('[VWorld getIndvdLandPriceAttr ' + yr + ' 응답]', data);
+          console.log('[VWorld getIndvdLandPriceAttr ' + yr + ' 응답]', JSON.stringify(data));
           try {
             const field = data.response.fields.field;
             const item = Array.isArray(field) ? field[0] : field;
@@ -269,7 +270,7 @@
     vworldJsonp('https://api.vworld.kr/ned/data/getBuildingUse', {
       key: vworldKey, domain: VWORLD_DOMAIN, format: 'json', numOfRows: 5, pnu: pnu,
     }, function (data) {
-      console.log('[VWorld getBuildingUse 응답]', data);
+      console.log('[VWorld getBuildingUse 응답]', JSON.stringify(data));
       try {
         const field = data.response.fields.field;
         const item = Array.isArray(field) ? field[0] : field;

@@ -72,6 +72,11 @@ st.markdown(
       section[data-testid="stSidebar"] * {
         border-radius: 0 !important;
       }
+      /* 지도 선택 라디오 버튼의 원형 표시는 예외 - 다시 동그랗게 복원 */
+      section[data-testid="stSidebar"] [data-baseweb="radio"],
+      section[data-testid="stSidebar"] [data-baseweb="radio"] * {
+        border-radius: 50% !important;
+      }
       /* 색상 팝오버 내용은 sidebar 바깥의 별도 portal에 렌더링되므로 전역으로 처리 */
       div[data-testid="stPopoverBody"] {
         border-radius: 0 !important;
