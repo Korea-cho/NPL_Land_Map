@@ -54,18 +54,32 @@ def check_password() -> bool:
 if not check_password():
     st.stop()
 
-# 흰색 배경에서 입력창 경계가 안 보이는 문제 - 어두운 윤곽선 추가
-# (포커스 시 기본 테마색(빨강) 아웃라인이 추가로 붙는 것은 제거 - 윤곽선 하나만 유지)
+# 흰색 배경에서 입력창 경계가 안 보이는 문제 - 어두운 윤곽선 추가.
+# (포커스 시 빨간 아웃라인이 붙던 원인은 테마 primaryColor가 지정 안 돼 기본값(빨강)이 쓰였기 때문 -
+#  config.toml에 primaryColor를 지정해 근본적으로 해결. 아래는 혹시 남아있을 잔여 스타일에 대한 보강.)
+# 사이드바 내 버튼/카드/입력창의 모서리를 전부 직각(0)으로 통일.
 st.markdown(
     """
     <style>
       textarea, input[type="text"], input[type="password"] {
         border: 1px solid #6b6f66 !important;
+        border-radius: 0 !important;
       }
-      textarea:focus, input[type="text"]:focus, input[type="password"]:focus {
+      textarea:focus, input[type="text"]:focus, input[type="password"]:focus,
+      textarea:focus-visible, input:focus-visible {
         border-color: #6b6f66 !important;
         outline: none !important;
         box-shadow: none !important;
+      }
+      div[data-baseweb="textarea"], div[data-baseweb="input"],
+      div[data-baseweb="textarea"]:focus-within, div[data-baseweb="input"]:focus-within {
+        box-shadow: none !important;
+        border-radius: 0 !important;
+      }
+      section[data-testid="stSidebar"] button,
+      section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"],
+      div[data-testid="stPopoverBody"] {
+        border-radius: 0 !important;
       }
     </style>
     """,
@@ -268,7 +282,7 @@ addr_text = st.sidebar.text_area(
 
 btn_col1, btn_col2 = st.sidebar.columns(2)
 register_clicked = btn_col1.button("일괄 등록", use_container_width=True, key="btn_register")
-clear_all_clicked = btn_col2.button("🗑️ 전체 삭제", use_container_width=True, key="btn_clear_all")
+clear_all_clicked = btn_col2.button("전체 삭제", use_container_width=True, key="btn_clear_all")
 
 # 버튼 크기를 기존 대비 약 80% 수준으로 축소
 st.markdown(
@@ -287,15 +301,20 @@ st.markdown(
 if register_clicked:
     lines = [ln.strip() for ln in addr_text.split("\n") if ln.strip()]
     failed = []
+    new_parcels = []
     for line in lines:
         coord = geocode_address(line, st.session_state.map_provider)
         if coord:
             # 도로명 주소 등으로 검색해도 목록에는 정식 지번 표기가 나오도록 역지오코딩
             official = reverse_geocode(coord[0], coord[1], st.session_state.map_provider)
             display_addr = official or line
-            _add_parcel(display_addr, coord[0], coord[1])
+            new_parcels.append((display_addr, coord[0], coord[1]))
         else:
             failed.append(line)
+    # 새로 검색하면 이전에 등록된 지번은 지우고 이번에 입력한 지번으로 교체
+    st.session_state.parcels = []
+    for display_addr, lat, lng in new_parcels:
+        _add_parcel(display_addr, lat, lng)
     if failed:
         st.sidebar.warning("주소를 찾을 수 없습니다:\n" + "\n".join(failed))
 
@@ -304,79 +323,62 @@ if clear_all_clicked:
     st.rerun()
 
 if st.session_state.parcels:
-    delete_idx = None
     palette_css_rules = []
     for i, p in enumerate(st.session_state.parcels):
         with st.sidebar.container(border=True):
-            num_col, addr_col, del_col = st.columns([1, 7, 1])
+            num_col, addr_col = st.columns([1, 8])
             pop_key = f"colorpop_{p['id']}"
             with num_col.popover(str(i + 1), key=pop_key):
-                for row_start in range(0, len(EXCEL_COLORS), 5):
-                    row_colors = EXCEL_COLORS[row_start:row_start + 5]
-                    color_cols = st.columns(len(row_colors), gap="small")
-                    for ci, c_hex in enumerate(row_colors):
-                        idx = row_start + ci
-                        pal_key = f"palette_{p['id']}_{idx}"
-                        if color_cols[ci].button(" ", key=pal_key):
-                            p["color"] = c_hex
-                        palette_css_rules.append(
-                            f'.st-key-{pal_key} button {{ background:{c_hex} !important; '
-                            f'border-color:rgba(0,0,0,0.15) !important; }}'
-                        )
+                color_cols = st.columns(len(EXCEL_COLORS), gap="small")
+                for ci, c_hex in enumerate(EXCEL_COLORS):
+                    pal_key = f"palette_{p['id']}_{ci}"
+                    if color_cols[ci].button(" ", key=pal_key):
+                        p["color"] = c_hex
+                    palette_css_rules.append(
+                        f'.st-key-{pal_key} button {{ background:{c_hex} !important; '
+                        f'border-color:rgba(0,0,0,0.15) !important; }}'
+                    )
             # 번호 트리거 버튼 자체를 "윤곽선 있는 사각형 안에 번호"로 스타일링
             # (popover 버튼에 기본으로 붙는 펼침 화살표(chevron)는 버튼 내부 두 번째 자식으로
-            #  렌더링되므로 nth-child(2)로 확실히 숨김)
+            #  렌더링되므로 nth-child(2)로 확실히 숨김. 지번 텍스트와 겹쳐 보이지 않도록 margin-right 확보)
             palette_css_rules.append(
                 f'.st-key-{pop_key} button {{ '
                 f'background:{p["color"]} !important; color:#fff !important; '
                 f'font-weight:700 !important; font-size:0.75rem !important; '
-                f'border:1.5px solid rgba(0,0,0,0.4) !important; border-radius:4px !important; '
+                f'border:1.5px solid rgba(0,0,0,0.4) !important; '
                 f'width:1.8rem !important; height:1.8rem !important; min-height:1.8rem !important; '
                 f'padding:0 !important; line-height:1 !important; overflow:hidden !important; '
-                f'justify-content:center !important; }} '
+                f'justify-content:center !important; margin-right:0.6rem !important; }} '
                 f'.st-key-{pop_key} button svg {{ display:none !important; }} '
                 f'.st-key-{pop_key} button > div {{ margin:0 !important; gap:0 !important; }} '
                 f'.st-key-{pop_key} button > div > *:nth-child(2) {{ display:none !important; }}'
             )
             addr_col.markdown(
-                f"<span style='font-size:0.8rem'><b>{p['address']}</b></span>",
+                f"<span style='font-size:0.8rem; padding-left:0.3rem;'><b>{p['address']}</b></span>",
                 unsafe_allow_html=True,
             )
-            del_key = f"del_{p['id']}"
-            if del_col.button("✕", key=del_key, help="삭제"):
-                delete_idx = i
 
-    # 삭제 버튼: 작고 둥근 원형 / 색상 버튼: 여백·테두리 없는 네모 스와치, 한 줄로 붙여서 배치
+    # 색상 스와치: 기존 대비 2배 크기, 10개 색상을 한 줄로 배치
     st.markdown(
         f"""
         <style>
-          [class*="st-key-del_"] button {{
-            border-radius: 50% !important;
-            width: 1.5rem !important; height: 1.5rem !important; min-height: 1.5rem !important;
-            padding: 0 !important; font-size: 0.7rem !important; line-height: 1 !important;
-          }}
           [class*="st-key-palette_"] button {{
-            border-radius: 1px !important;
-            width: 100% !important; height: 0.6rem !important; min-height: 0.6rem !important;
+            border-radius: 0 !important;
+            width: 100% !important; height: 1.2rem !important; min-height: 1.2rem !important;
             padding: 0 !important; margin: 0 !important;
           }}
           section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] {{ gap: 0.12rem !important; }}
           div[data-testid="stPopoverBody"] {{
-            padding: 0.25rem !important;
-            min-width: 3.6rem !important;
-            width: 3.6rem !important;
+            padding: 0.4rem !important;
+            min-width: 13rem !important;
+            width: 13rem !important;
           }}
-          div[data-testid="stPopoverBody"] div[data-testid="stHorizontalBlock"] {{ gap: 0.05rem !important; }}
-          div[data-testid="stPopoverBody"] div[data-testid="element-container"] {{ margin-bottom: 0.05rem !important; }}
+          div[data-testid="stPopoverBody"] div[data-testid="stHorizontalBlock"] {{ gap: 0.15rem !important; }}
           {" ".join(palette_css_rules)}
         </style>
         """,
         unsafe_allow_html=True,
     )
-
-    if delete_idx is not None:
-        st.session_state.parcels.pop(delete_idx)
-        st.rerun()
 
 if len(st.session_state.parcels) >= 2:
     opts = {f"{i + 1}. {p['address']}": i for i, p in enumerate(st.session_state.parcels)}
