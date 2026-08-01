@@ -235,7 +235,17 @@
       console.log('[VWorld getLandUseAttr 응답]', JSON.stringify(data));
       try {
         const list = extractFieldArray(data) || [];
-        result.useZones = list.map(f => f.prposAreaDstrcCodeNm).filter(Boolean);
+        // 이 API는 용도지역뿐 아니라 각종 지구·구역·도로접함 여부·건축선 등 규제사항이
+        // 전부 섞여서 나오고(예: 과밀억제권역, 가축사육제한구역, 도로 접함, 지구단위계획구역 등),
+        // 그 중 실제로 이 필지에 적용되는(cnflcAt="1", 포함) "용도지역"(코드가 UQA로 시작하되
+        // UQA01X처럼 도시/비도시지역 같은 상위 광역 구분은 제외)만 추려서 "주된 용도지역"으로 사용.
+        const primaryZones = list.filter(f =>
+          f.cnflcAt === '1' &&
+          f.prposAreaDstrcCode &&
+          f.prposAreaDstrcCode.indexOf('UQA') === 0 &&
+          f.prposAreaDstrcCode !== 'UQA01X'
+        );
+        result.useZones = primaryZones.map(f => f.prposAreaDstrcCodeNm).filter(Boolean);
       } catch (e) { /* 조회 실패 시 비워둠 */ }
       done();
     });
@@ -306,12 +316,14 @@
   function fmtLandSummaryHTML(detail) {
     if (!detail) return '<span style="color:#999;">토지정보 조회 실패</span>';
     const latest = detail.priceHistory.length ? detail.priceHistory[0] : null;
-    let html = '면적 <b>' + (detail.area ? detail.area.toLocaleString() + ' m²' : '-') + '</b>';
-    html += ' · 공시지가 <b>' + (latest ? latest.price.toLocaleString() + '원/m²(' + latest.year + ')' : '-') + '</b>';
-    html += ' · 지목 <b>' + (detail.jimok || '-') + '</b>';
-    html += ' · 도로조건 <b>' + (detail.roadCondition || '-') + '</b><br>';
-    html += '용도지역/지구 <b>' + (detail.useZones.length ? detail.useZones.join(', ') : '-') + '</b>';
-    return html;
+    const parts = [
+      '면적 ' + (detail.area ? detail.area.toLocaleString() + 'm²' : '-'),
+      '최근 공시지가 ' + (latest ? latest.price.toLocaleString() + '원(' + latest.year + ')' : '-'),
+      '지목 ' + (detail.jimok || '-'),
+      '용도 ' + (detail.useZones.length ? detail.useZones.join(',') : '-'),
+      '도로조건 ' + (detail.roadCondition || '-'),
+    ];
+    return '<span style="color:#A8362A;">' + parts.join(' / ') + '</span>';
   }
 
   function fmtBuildingHTML(b) {
@@ -353,7 +365,7 @@
     return cols.join('\t');
   }
   const EXCEL_HEADER_ROW = [
-    '주소(지번)', '면적(m²)', '지목', '도로조건', '용도지역/지구',
+    '주소(지번)', '면적(m²)', '지목', '도로조건', '주된 용도지역',
     '공시지가1', '공시지가2', '공시지가3', '공시지가4', '공시지가5',
     '건물명', '구조', '주용도', '지상층수', '지하층수', '건축면적', '연면적', '대지면적', '높이', '건폐율', '용적률',
   ].join('\t');
@@ -381,9 +393,9 @@
   function buildPopupHTML(uid) {
     const d = window.__parcelReg[uid];
     if (!d) return '';
-    let html = '<div style="padding:8px 10px;font-size:13px;max-width:280px;">';
-    html += '<b>' + d.address + '</b><br>';
-    html += '<div style="margin:4px 0;">' + (d.detail ? fmtLandSummaryHTML(d.detail) : '<span style="color:#999;">토지정보 조회 중...</span>') + '</div>';
+    let html = '<div style="padding:8px 10px;font-size:13px;max-width:300px;">';
+    html += '<div style="font-size:15px;font-weight:700;margin-bottom:4px;">' + d.address + '</div>';
+    html += '<div style="margin:4px 0;font-size:12px;">' + (d.detail ? fmtLandSummaryHTML(d.detail) : '<span style="color:#999;">토지정보 조회 중...</span>') + '</div>';
     html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">';
     html += '<a href="https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?lat=' + d.lat + '&lng=' + d.lng + '&zoom=17" target="_blank" style="font-size:11px;padding:3px 6px;background:#eee;border-radius:3px;text-decoration:none;color:#333;">토지이음</a>';
     html += '<a href="https://map.naver.com/p/search/' + d.lat + ',' + d.lng + '" target="_blank" style="font-size:11px;padding:3px 6px;background:#eee;border-radius:3px;text-decoration:none;color:#333;">네이버지도</a>';

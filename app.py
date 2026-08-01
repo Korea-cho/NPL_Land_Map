@@ -442,6 +442,8 @@ st.markdown(
       section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] { padding: 0.075rem 0.5rem 0.3rem 0.25rem !important; }
       #MainMenu { visibility: hidden; }
       footer { visibility: hidden; }
+      /* 사이드바 폭 드래그 조절 핸들 숨김 (접기/펼치기 버튼은 별개라 그대로 유지됨) */
+      .eelgd2m3 { display: none !important; pointer-events: none !important; }
       div[data-testid="stVerticalBlock"] { gap: 0 !important; }
       div[data-testid="element-container"] { margin: 0 !important; }
       /* components.iframe이 만드는 iframe을 src로 특정해서 화면 전체를 채우도록 확대 */
