@@ -54,6 +54,18 @@ def check_password() -> bool:
 if not check_password():
     st.stop()
 
+# 흰색 배경에서 입력창 경계가 안 보이는 문제 - 어두운 윤곽선 추가
+st.markdown(
+    """
+    <style>
+      textarea, input[type="text"], input[type="password"] {
+        border: 1px solid #6b6f66 !important;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 # =========================================================
 # 2. 세션 상태 초기화 (새로고침/재접속 시 항상 초기화됨)
@@ -247,35 +259,78 @@ addr_text = st.sidebar.text_area(
     "지번 등록", height=80, label_visibility="collapsed",
     placeholder="지번/도로명 주소 (줄바꿈으로 여러 개 입력)",
 )
-if st.sidebar.button("일괄 등록", use_container_width=True):
+
+btn_col1, btn_col2 = st.sidebar.columns(2)
+register_clicked = btn_col1.button("일괄 등록", use_container_width=True, key="btn_register")
+clear_all_clicked = btn_col2.button("🗑️ 전체 삭제", use_container_width=True, key="btn_clear_all")
+
+# 버튼 크기를 기존 대비 약 80% 수준으로 축소
+st.markdown(
+    """
+    <style>
+      .st-key-btn_register button, .st-key-btn_clear_all button {
+        font-size: 0.8rem !important;
+        padding: 0.28rem 0.5rem !important;
+        min-height: 2rem !important;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+if register_clicked:
     lines = [ln.strip() for ln in addr_text.split("\n") if ln.strip()]
     failed = []
     for line in lines:
         coord = geocode_address(line, st.session_state.map_provider)
         if coord:
-            _add_parcel(line, coord[0], coord[1])
+            # 도로명 주소 등으로 검색해도 목록에는 정식 지번 표기가 나오도록 역지오코딩
+            official = reverse_geocode(coord[0], coord[1], st.session_state.map_provider)
+            display_addr = official or line
+            _add_parcel(display_addr, coord[0], coord[1])
         else:
             failed.append(line)
     if failed:
         st.sidebar.warning("주소를 찾을 수 없습니다:\n" + "\n".join(failed))
+
+if clear_all_clicked:
+    st.session_state.parcels = []
+    st.rerun()
 
 if st.session_state.parcels:
     delete_idx = None
     palette_css_rules = []
     for i, p in enumerate(st.session_state.parcels):
         with st.sidebar.container(border=True):
-            num_col, addr_col, del_col = st.columns([1.4, 6.6, 1])
-            current_idx = EXCEL_COLORS.index(p["color"]) if p["color"] in EXCEL_COLORS else 0
-            with num_col.popover(f"{EXCEL_COLOR_ICON[current_idx]} {i + 1}"):
-                color_cols = st.columns(len(EXCEL_COLORS), gap="small")
-                for ci, c_hex in enumerate(EXCEL_COLORS):
-                    pal_key = f"palette_{p['id']}_{ci}"
-                    if color_cols[ci].button(" ", key=pal_key):
-                        p["color"] = c_hex
-                    palette_css_rules.append(
-                        f'.st-key-{pal_key} button {{ background:{c_hex} !important; '
-                        f'border-color:rgba(0,0,0,0.15) !important; }}'
-                    )
+            num_col, addr_col, del_col = st.columns([1, 7, 1])
+            pop_key = f"colorpop_{p['id']}"
+            with num_col.popover(str(i + 1), key=pop_key):
+                st.caption("색상 선택")
+                for row_start in range(0, len(EXCEL_COLORS), 5):
+                    row_colors = EXCEL_COLORS[row_start:row_start + 5]
+                    color_cols = st.columns(len(row_colors), gap="small")
+                    for ci, c_hex in enumerate(row_colors):
+                        idx = row_start + ci
+                        pal_key = f"palette_{p['id']}_{idx}"
+                        if color_cols[ci].button(" ", key=pal_key):
+                            p["color"] = c_hex
+                        palette_css_rules.append(
+                            f'.st-key-{pal_key} button {{ background:{c_hex} !important; '
+                            f'border-color:rgba(0,0,0,0.15) !important; }}'
+                        )
+            # 번호 트리거 버튼 자체를 "윤곽선 있는 사각형 안에 번호"로 스타일링
+            # (popover 버튼에 기본으로 붙는 펼침 화살표(chevron) svg는 숨김)
+            palette_css_rules.append(
+                f'.st-key-{pop_key} button {{ '
+                f'background:{p["color"]} !important; color:#fff !important; '
+                f'font-weight:700 !important; font-size:0.75rem !important; '
+                f'border:1.5px solid rgba(0,0,0,0.4) !important; border-radius:4px !important; '
+                f'width:1.8rem !important; height:1.8rem !important; min-height:1.8rem !important; '
+                f'padding:0 !important; line-height:1 !important; overflow:hidden !important; '
+                f'justify-content:center !important; }} '
+                f'.st-key-{pop_key} button svg {{ display:none !important; }} '
+                f'.st-key-{pop_key} button > div {{ margin:0 !important; gap:0 !important; }}'
+            )
             addr_col.markdown(
                 f"<span style='font-size:0.8rem'><b>{p['address']}</b></span>",
                 unsafe_allow_html=True,
@@ -299,6 +354,7 @@ if st.session_state.parcels:
             padding: 0 !important; margin: 0 !important;
           }}
           section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] {{ gap: 0.12rem !important; }}
+          div[data-testid="stPopoverBody"] {{ padding: 0.5rem !important; }}
           {" ".join(palette_css_rules)}
         </style>
         """,
@@ -309,17 +365,13 @@ if st.session_state.parcels:
         st.session_state.parcels.pop(delete_idx)
         st.rerun()
 
-    if st.sidebar.button("🗑️ 전체 삭제", use_container_width=True):
-        st.session_state.parcels = []
-        st.rerun()
-
 if len(st.session_state.parcels) >= 2:
     opts = {f"{i + 1}. {p['address']}": i for i, p in enumerate(st.session_state.parcels)}
     keys = list(opts.keys())
-    with st.sidebar.expander("🚗 자동차 거리 계산 (네이버)"):
-        from_key = st.selectbox("출발 지번", keys, key="dist_from")
-        to_key = st.selectbox("도착 지번", keys, index=min(1, len(keys) - 1), key="dist_to")
-        if st.button("거리/시간 계산하기", use_container_width=True):
+    with st.sidebar.expander("거리 계산"):
+        from_key = st.selectbox("출발 지번", keys, key="dist_from", label_visibility="collapsed")
+        to_key = st.selectbox("도착 지번", keys, index=min(1, len(keys) - 1), key="dist_to", label_visibility="collapsed")
+        if st.button("계산하기", use_container_width=True, key="btn_calc_dist"):
             i1, i2 = opts[from_key], opts[to_key]
             if i1 == i2:
                 st.error("서로 다른 지번을 선택해주세요.")
@@ -329,7 +381,7 @@ if len(st.session_state.parcels) >= 2:
                 if result:
                     dist_km, dur_ms = result[0] / 1000, result[1]
                     dur_min = dur_ms / 60000
-                    st.success(f"🚗 {dist_km:.1f} km · ⏱️ {dur_min:.0f}분")
+                    st.success(f"{dist_km:.1f} km · {dur_min:.0f}분")
                 else:
                     straight = haversine_km((p1["lat"], p1["lng"]), (p2["lat"], p2["lng"]))
                     st.warning(f"경로 계산 실패. 직선거리 참고값: {straight:.1f} km")

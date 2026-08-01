@@ -116,6 +116,10 @@
   const naverId = b64UrlDecode(qs.get('naverId') || '');
   const kakaoKey = b64UrlDecode(qs.get('kakaoKey') || '');
   const vworldKey = b64UrlDecode(qs.get('vworldKey') || '');
+  // VWorld ned/data 계열 API는 domain 파라미터가 없으면(또는 키에 등록된 도메인과 다르면)
+  // 에러 없이 그냥 빈 결과를 반환하는 경우가 많아 - 지목/공시지가/건물정보 등이 전부
+  // 비어보이던 문제의 원인으로 추정됨. 이 페이지가 실제 서빙되는 도메인을 그대로 넘긴다.
+  const VWORLD_DOMAIN = window.location.hostname;
   let parcels = [];
   try {
     parcels = JSON.parse(b64UrlDecode(qs.get('data') || '') || '[]');
@@ -168,7 +172,7 @@
     if (!vworldKey) { cb(null); return; }
     vworldJsonp('https://api.vworld.kr/req/data', {
       service: 'data', request: 'GetFeature', data: 'LP_PA_CBND_BUBUN',
-      key: vworldKey, geomFilter: 'POINT(' + lng + ' ' + lat + ')',
+      key: vworldKey, domain: VWORLD_DOMAIN, geomFilter: 'POINT(' + lng + ' ' + lat + ')',
       size: 1, format: 'json', crs: 'EPSG:4326',
     }, function (data) {
       try {
@@ -191,7 +195,7 @@
 
     // 1) 토지임야정보 - 지목, 정확한 지적공부 면적
     vworldJsonp('https://api.vworld.kr/ned/data/ladfrlList', {
-      key: vworldKey, format: 'json', pnu: pnu,
+      key: vworldKey, domain: VWORLD_DOMAIN, format: 'json', pnu: pnu,
     }, function (data) {
       try {
         const item = data.fields.ladfrlVOList[0];
@@ -203,7 +207,7 @@
 
     // 2) 토지이용계획 - 용도지역/지구 (여러 개일 수 있음)
     vworldJsonp('https://api.vworld.kr/ned/data/getLandUseAttr', {
-      key: vworldKey, format: 'json', numOfRows: 20, pnu: pnu,
+      key: vworldKey, domain: VWORLD_DOMAIN, format: 'json', numOfRows: 20, pnu: pnu,
     }, function (data) {
       try {
         const fields = data.response.fields.field;
@@ -215,7 +219,7 @@
 
     // 3) 토지특성정보 - 도로조건(도로접면)
     vworldJsonp('https://api.vworld.kr/ned/data/getLandCharacteristics', {
-      key: vworldKey, format: 'json', stdrYear: new Date().getFullYear(), pnu: pnu,
+      key: vworldKey, domain: VWORLD_DOMAIN, format: 'json', stdrYear: new Date().getFullYear(), pnu: pnu,
     }, function (data) {
       try {
         const field = data.response.fields.field;
@@ -232,7 +236,7 @@
       let remaining = years.length;
       years.forEach(function (yr) {
         vworldJsonp('https://api.vworld.kr/ned/data/getIndvdLandPriceAttr', {
-          key: vworldKey, format: 'json', stdrYear: yr, pnu: pnu,
+          key: vworldKey, domain: VWORLD_DOMAIN, format: 'json', stdrYear: yr, pnu: pnu,
         }, function (data) {
           try {
             const field = data.response.fields.field;
@@ -254,7 +258,7 @@
   // ---- 건물통합정보 (클릭해서 펼칠 때만 조회) ----
   function fetchBuildingInfo(pnu, cb) {
     vworldJsonp('https://api.vworld.kr/ned/data/getBuildingUse', {
-      key: vworldKey, format: 'json', numOfRows: 5, pnu: pnu,
+      key: vworldKey, domain: VWORLD_DOMAIN, format: 'json', numOfRows: 5, pnu: pnu,
     }, function (data) {
       try {
         const field = data.response.fields.field;
@@ -357,7 +361,7 @@
     html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">';
     html += '<a href="https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?lat=' + d.lat + '&lng=' + d.lng + '&zoom=17" target="_blank" style="font-size:11px;padding:3px 6px;background:#eee;border-radius:3px;text-decoration:none;color:#333;">토지이음</a>';
     html += '<a href="https://map.naver.com/p/search/' + d.lat + ',' + d.lng + '" target="_blank" style="font-size:11px;padding:3px 6px;background:#eee;border-radius:3px;text-decoration:none;color:#333;">네이버지도</a>';
-    html += '<a href="https://map.kakao.com/link/map/' + d.lat + ',' + d.lng + '" target="_blank" style="font-size:11px;padding:3px 6px;background:#eee;border-radius:3px;text-decoration:none;color:#333;">카카오맵</a>';
+    html += '<a href="https://map.kakao.com/link/map/' + encodeURIComponent(d.address) + ',' + d.lat + ',' + d.lng + '" target="_blank" style="font-size:11px;padding:3px 6px;background:#eee;border-radius:3px;text-decoration:none;color:#333;">카카오맵</a>';
     html += '<button onclick="window.__toggleBuilding(\'' + uid + '\')" style="font-size:11px;padding:3px 6px;background:#eee;border:none;border-radius:3px;cursor:pointer;">건물정보' + (d.buildingOpen ? ' ▲' : ' ▼') + '</button>';
     html += '<button onclick="window.__copyParcel(\'' + uid + '\')" style="font-size:11px;padding:3px 6px;background:#2A4258;color:#fff;border:none;border-radius:3px;cursor:pointer;">📋 복사</button>';
     html += '</div>';
@@ -490,7 +494,7 @@
         fetchParcelPolygon(p.lat, p.lng, function (result) {
           if (!result) return;
           reg.pnu = result.pnu;
-          if (result.officialAddr) reg.address = result.officialAddr; // 검색 주소 대신 정식 지번으로 교체
+          if (result.officialAddr) { reg.address = result.officialAddr; if (reg.refresh) reg.refresh(); } // 검색 주소 대신 정식 지번으로 교체
           if (!result.ring || result.ring.length < 3) return;
           const path = result.ring.map(c => new naver.maps.LatLng(c[1], c[0]));
           new naver.maps.Polygon({
@@ -745,7 +749,7 @@
           fetchParcelPolygon(p.lat, p.lng, function (result) {
             if (!result) return;
             reg.pnu = result.pnu;
-            if (result.officialAddr) reg.address = result.officialAddr;
+            if (result.officialAddr) { reg.address = result.officialAddr; if (reg.refresh) reg.refresh(); }
             if (!result.ring || result.ring.length < 3) return;
             const path = result.ring.map(c => new kakao.maps.LatLng(c[1], c[0]));
             new kakao.maps.Polygon({
