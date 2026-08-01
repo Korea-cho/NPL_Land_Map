@@ -152,6 +152,22 @@
     return '<div class="shape-badge ' + cls + '" style="background:' + color + ';">' + label + '</div>';
   }
 
+  // ---- VWorld ned/data 응답 파싱용 범용 헬퍼 ----
+  // 실제 응답을 콘솔로 확인해보니, 엔드포인트마다 최상위 wrapper 키 이름이 제각각이었음
+  // (예: getLandUseAttr -> data.landUses.field, getLandCharacteristics -> data.landCharacteristicss.field,
+  //  getIndvdLandPriceAttr -> data.indvdLandPrices.field). 공통적으로 "field" 배열을 담고 있으므로
+  // wrapper 키 이름과 무관하게 첫 번째로 .field를 가진 속성을 찾아 배열로 반환한다.
+  function extractFieldArray(data) {
+    if (!data) return null;
+    for (const k in data) {
+      if (data[k] && data[k].field) {
+        const f = data[k].field;
+        return Array.isArray(f) ? f : [f];
+      }
+    }
+    return null;
+  }
+
   // ---- VWorld JSONP 공통 헬퍼 (브라우저=사용자 IP에서 직접 호출 - 서버IP는 VWorld가 차단함) ----
   function vworldJsonp(baseUrl, params, cb) {
     const cbName = 'vwcb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
@@ -205,7 +221,7 @@
     }, function (data) {
       console.log('[VWorld ladfrlList 응답]', JSON.stringify(data));
       try {
-        const item = data.fields.ladfrlVOList[0];
+        const item = data.ladfrlVOList.ladfrlVOList[0];
         result.jimok = item.lndcgrCodeNm || null;
         result.area = item.lndpclAr ? parseFloat(item.lndpclAr) : null;
       } catch (e) { /* 조회 실패 시 비워둠 */ }
@@ -218,8 +234,7 @@
     }, function (data) {
       console.log('[VWorld getLandUseAttr 응답]', JSON.stringify(data));
       try {
-        const fields = data.response.fields.field;
-        const list = Array.isArray(fields) ? fields : [fields];
+        const list = extractFieldArray(data) || [];
         result.useZones = list.map(f => f.prposAreaDstrcCodeNm).filter(Boolean);
       } catch (e) { /* 조회 실패 시 비워둠 */ }
       done();
@@ -231,8 +246,8 @@
     }, function (data) {
       console.log('[VWorld getLandCharacteristics 응답]', JSON.stringify(data));
       try {
-        const field = data.response.fields.field;
-        const item = Array.isArray(field) ? field[0] : field;
+        const list = extractFieldArray(data) || [];
+        const item = list[0];
         result.roadCondition = item.roadSideCodeNm || null;
       } catch (e) { /* 조회 실패 시 비워둠 */ }
       done();
@@ -249,8 +264,8 @@
         }, function (data) {
           console.log('[VWorld getIndvdLandPriceAttr ' + yr + ' 응답]', JSON.stringify(data));
           try {
-            const field = data.response.fields.field;
-            const item = Array.isArray(field) ? field[0] : field;
+            const list = extractFieldArray(data) || [];
+            const item = list[0];
             if (item && item.pblntfPclnd) {
               result.priceHistory.push({ year: yr, price: parseInt(item.pblntfPclnd, 10) });
             }
@@ -272,8 +287,8 @@
     }, function (data) {
       console.log('[VWorld getBuildingUse 응답]', JSON.stringify(data));
       try {
-        const field = data.response.fields.field;
-        const item = Array.isArray(field) ? field[0] : field;
+        const list = extractFieldArray(data) || [];
+        const item = list[0];
         if (!item) { cb(null); return; }
         cb({
           buldNm: item.buldNm || '', buldDongNm: item.buldDongNm || '',

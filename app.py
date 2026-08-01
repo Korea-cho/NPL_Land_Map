@@ -73,8 +73,8 @@ st.markdown(
         border-radius: 0 !important;
       }
       /* 지도 선택 라디오 버튼의 원형 표시는 예외 - 다시 동그랗게 복원 */
-      section[data-testid="stSidebar"] [data-baseweb="radio"],
-      section[data-testid="stSidebar"] [data-baseweb="radio"] * {
+      section[data-testid="stSidebar"] [data-testid="stRadioOption"],
+      section[data-testid="stSidebar"] [data-testid="stRadioOption"] * {
         border-radius: 50% !important;
       }
       /* 색상 팝오버 내용은 sidebar 바깥의 별도 portal에 렌더링되므로 전역으로 처리 */
@@ -348,7 +348,8 @@ if st.session_state.parcels:
                 f'border:1.5px solid rgba(0,0,0,0.4) !important; '
                 f'width:1.8rem !important; height:1.8rem !important; min-height:1.8rem !important; '
                 f'padding:0 !important; line-height:1 !important; overflow:hidden !important; '
-                f'justify-content:center !important; margin-right:0.6rem !important; }} '
+                f'justify-content:center !important; margin-right:0.6rem !important; '
+                f'margin-top:-0.1rem !important; margin-left:-0.1rem !important; }} '
                 f'.st-key-{pop_key} button svg {{ display:none !important; }} '
                 f'.st-key-{pop_key} button > div {{ margin:0 !important; gap:0 !important; }} '
                 f'.st-key-{pop_key} button > div > *:nth-child(2) {{ display:none !important; }}'
@@ -438,7 +439,7 @@ st.markdown(
       }
       .block-container { padding: 0 !important; max-width: 100% !important; }
       section[data-testid="stSidebar"] .block-container { padding-top: 0.6rem !important; }
-      section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] { padding: 0.15rem 0.5rem 0.3rem 0.25rem !important; }
+      section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] { padding: 0.075rem 0.5rem 0.3rem 0.25rem !important; }
       #MainMenu { visibility: hidden; }
       footer { visibility: hidden; }
       div[data-testid="stVerticalBlock"] { gap: 0 !important; }
