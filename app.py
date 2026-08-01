@@ -264,25 +264,25 @@ if st.session_state.parcels:
     palette_css_rules = []
     for i, p in enumerate(st.session_state.parcels):
         with st.sidebar.container(border=True):
-            top_l, top_r = st.columns([8, 1])
-            top_l.markdown(
-                f"<span style='font-size:0.8rem'><b>{i + 1}. {p['address']}</b></span>",
+            num_col, addr_col, del_col = st.columns([1.4, 6.6, 1])
+            current_idx = EXCEL_COLORS.index(p["color"]) if p["color"] in EXCEL_COLORS else 0
+            with num_col.popover(f"{EXCEL_COLOR_ICON[current_idx]} {i + 1}"):
+                color_cols = st.columns(len(EXCEL_COLORS), gap="small")
+                for ci, c_hex in enumerate(EXCEL_COLORS):
+                    pal_key = f"palette_{p['id']}_{ci}"
+                    if color_cols[ci].button(" ", key=pal_key):
+                        p["color"] = c_hex
+                    palette_css_rules.append(
+                        f'.st-key-{pal_key} button {{ background:{c_hex} !important; '
+                        f'border-color:rgba(0,0,0,0.15) !important; }}'
+                    )
+            addr_col.markdown(
+                f"<span style='font-size:0.8rem'><b>{p['address']}</b></span>",
                 unsafe_allow_html=True,
             )
             del_key = f"del_{p['id']}"
-            if top_r.button("✕", key=del_key, help="삭제"):
+            if del_col.button("✕", key=del_key, help="삭제"):
                 delete_idx = i
-
-            color_cols = st.columns(len(EXCEL_COLORS), gap="small")
-            for ci, c_hex in enumerate(EXCEL_COLORS):
-                pal_key = f"palette_{p['id']}_{ci}"
-                if color_cols[ci].button(" ", key=pal_key):
-                    p["color"] = c_hex
-                # 이 버튼의 실제 배경을 해당 색상 hex로 정확히 지정 (key 기반 클래스로 특정)
-                palette_css_rules.append(
-                    f'.st-key-{pal_key} button {{ background:{c_hex} !important; '
-                    f'border-color:rgba(255,255,255,0.35) !important; }}'
-                )
 
     # 삭제 버튼: 작고 둥근 원형 / 색상 버튼: 여백·테두리 없는 네모 스와치, 한 줄로 붙여서 배치
     st.markdown(
@@ -344,6 +344,11 @@ if len(st.session_state.parcels) >= 2:
 st.markdown(
     """
     <style>
+      html, body, .stApp, [data-testid="stAppViewContainer"], .main,
+      section[data-testid="stSidebar"] {
+        background-color: #FFFFFF !important;
+        color: #232722 !important;
+      }
       .block-container { padding: 0 !important; max-width: 100% !important; }
       section[data-testid="stSidebar"] .block-container { padding-top: 0.6rem !important; }
       section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] { padding: 0.3rem 0.5rem !important; }

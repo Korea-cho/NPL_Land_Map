@@ -148,8 +148,8 @@
     return '<div class="shape-badge ' + cls + '" style="background:' + color + ';">' + label + '</div>';
   }
 
-  // ---- VWorld 지적도 폴리곤 (JSONP, 브라우저=사용자 IP에서 직접 호출 - 서버IP는 VWorld가 차단함) ----
-  function vworldJsonp(params, cb) {
+  // ---- VWorld JSONP 공통 헬퍼 (브라우저=사용자 IP에서 직접 호출 - 서버IP는 VWorld가 차단함) ----
+  function vworldJsonp(baseUrl, params, cb) {
     const cbName = 'vwcb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
     window[cbName] = function (data) {
       cb(data);
@@ -158,29 +158,242 @@
     };
     const qs2 = new URLSearchParams(Object.assign({}, params, { callback: cbName }));
     const script = document.createElement('script');
-    script.src = 'https://api.vworld.kr/req/data?' + qs2.toString();
+    script.src = baseUrl + '?' + qs2.toString();
     script.onerror = function () { cb(null); delete window[cbName]; };
     document.head.appendChild(script);
   }
 
+  // 지적도 폴리곤 + PNU/지목약칭/공시지가(당해년도) - 이 응답의 pnu를 이후 상세 조회에 재사용
   function fetchParcelPolygon(lat, lng, cb) {
     if (!vworldKey) { cb(null); return; }
-    vworldJsonp({
+    vworldJsonp('https://api.vworld.kr/req/data', {
       service: 'data', request: 'GetFeature', data: 'LP_PA_CBND_BUBUN',
       key: vworldKey, geomFilter: 'POINT(' + lng + ' ' + lat + ')',
       size: 1, format: 'json', crs: 'EPSG:4326',
     }, function (data) {
       try {
-        const features = data.response.result.featureCollection.features;
-        if (!features || !features.length) { cb(null); return; }
-        let ring = features[0].geometry.coordinates[0];
+        const feature = data.response.result.featureCollection.features[0];
+        let ring = feature.geometry.coordinates[0];
         while (ring && Array.isArray(ring[0][0])) ring = ring[0];
-        cb(ring); // [[lng,lat], ...]
+        cb({ ring: ring, pnu: feature.properties.pnu, officialAddr: feature.properties.addr });
       } catch (e) {
         cb(null);
       }
     });
   }
+
+  // ---- PNU 기반 상세 토지정보 (지목/정확면적, 용도지역·지구, 도로조건, 최근 5개년 공시지가) ----
+  // 클릭 시점에만 호출합니다 (지번당 여러 회 조회라 미리 다 불러오면 느려집니다).
+  function fetchLandDetail(pnu, cb) {
+    const result = { jimok: null, area: null, useZones: [], roadCondition: null, priceHistory: [] };
+    let pending = 3;
+    const done = () => { pending--; if (pending === 0) fetchPriceHistory(); };
+
+    // 1) 토지임야정보 - 지목, 정확한 지적공부 면적
+    vworldJsonp('https://api.vworld.kr/ned/data/ladfrlList', {
+      key: vworldKey, format: 'json', pnu: pnu,
+    }, function (data) {
+      try {
+        const item = data.fields.ladfrlVOList[0];
+        result.jimok = item.lndcgrCodeNm || null;
+        result.area = item.lndpclAr ? parseFloat(item.lndpclAr) : null;
+      } catch (e) { /* 조회 실패 시 비워둠 */ }
+      done();
+    });
+
+    // 2) 토지이용계획 - 용도지역/지구 (여러 개일 수 있음)
+    vworldJsonp('https://api.vworld.kr/ned/data/getLandUseAttr', {
+      key: vworldKey, format: 'json', numOfRows: 20, pnu: pnu,
+    }, function (data) {
+      try {
+        const fields = data.response.fields.field;
+        const list = Array.isArray(fields) ? fields : [fields];
+        result.useZones = list.map(f => f.prposAreaDstrcCodeNm).filter(Boolean);
+      } catch (e) { /* 조회 실패 시 비워둠 */ }
+      done();
+    });
+
+    // 3) 토지특성정보 - 도로조건(도로접면)
+    vworldJsonp('https://api.vworld.kr/ned/data/getLandCharacteristics', {
+      key: vworldKey, format: 'json', stdrYear: new Date().getFullYear(), pnu: pnu,
+    }, function (data) {
+      try {
+        const field = data.response.fields.field;
+        const item = Array.isArray(field) ? field[0] : field;
+        result.roadCondition = item.roadSideCodeNm || null;
+      } catch (e) { /* 조회 실패 시 비워둠 */ }
+      done();
+    });
+
+    // 4) 개별공시지가 - 최근 5개년 (연도별 순차 조회)
+    function fetchPriceHistory() {
+      const thisYear = new Date().getFullYear();
+      const years = [thisYear, thisYear - 1, thisYear - 2, thisYear - 3, thisYear - 4];
+      let remaining = years.length;
+      years.forEach(function (yr) {
+        vworldJsonp('https://api.vworld.kr/ned/data/getIndvdLandPriceAttr', {
+          key: vworldKey, format: 'json', stdrYear: yr, pnu: pnu,
+        }, function (data) {
+          try {
+            const field = data.response.fields.field;
+            const item = Array.isArray(field) ? field[0] : field;
+            if (item && item.pblntfPclnd) {
+              result.priceHistory.push({ year: yr, price: parseInt(item.pblntfPclnd, 10) });
+            }
+          } catch (e) { /* 해당 연도 데이터 없음 */ }
+          remaining--;
+          if (remaining === 0) {
+            result.priceHistory.sort((a, b) => b.year - a.year);
+            cb(result);
+          }
+        });
+      });
+    }
+  }
+
+  // ---- 건물통합정보 (클릭해서 펼칠 때만 조회) ----
+  function fetchBuildingInfo(pnu, cb) {
+    vworldJsonp('https://api.vworld.kr/ned/data/getBuildingUse', {
+      key: vworldKey, format: 'json', numOfRows: 5, pnu: pnu,
+    }, function (data) {
+      try {
+        const field = data.response.fields.field;
+        const item = Array.isArray(field) ? field[0] : field;
+        if (!item) { cb(null); return; }
+        cb({
+          buldNm: item.buldNm || '', buldDongNm: item.buldDongNm || '',
+          strct: item.strctCodeNm || '', prpos: item.mainPrposCodeNm || '',
+          groundFloor: item.groundFloorCo || '', undgrndFloor: item.undgrndFloorCo || '',
+          buldAr: item.buldBildngAr || '', totAr: item.buldTotar || '', plotAr: item.buldPlotAr || '',
+          height: item.buldHg || '', bcRatio: item.measrmtRt || '', farRatio: item.btlRt || '',
+          useConfmDe: item.useConfmDe || '', lastUpdtDt: item.lastUpdtDt || '',
+        });
+      } catch (e) { cb(null); }
+    });
+  }
+
+  // ---- 표시/복사용 텍스트 구성 ----
+  function fmtLandSummaryHTML(detail) {
+    if (!detail) return '<span style="color:#999;">토지정보 조회 실패</span>';
+    const latest = detail.priceHistory.length ? detail.priceHistory[0] : null;
+    let html = '면적 <b>' + (detail.area ? detail.area.toLocaleString() + ' m²' : '-') + '</b>';
+    html += ' · 공시지가 <b>' + (latest ? latest.price.toLocaleString() + '원/m²(' + latest.year + ')' : '-') + '</b>';
+    html += ' · 지목 <b>' + (detail.jimok || '-') + '</b>';
+    html += ' · 도로조건 <b>' + (detail.roadCondition || '-') + '</b><br>';
+    html += '용도지역/지구 <b>' + (detail.useZones.length ? detail.useZones.join(', ') : '-') + '</b>';
+    return html;
+  }
+
+  function fmtBuildingHTML(b) {
+    if (!b) return '<span style="color:#999;">건물통합정보 없음(무허가/미등록 등)</span>';
+    const rows = [
+      ['건물명', b.buldNm], ['동명칭', b.buldDongNm], ['구조', b.strct], ['주용도', b.prpos],
+      ['지상층수', b.groundFloor ? b.groundFloor + '층' : ''], ['지하층수', b.undgrndFloor ? b.undgrndFloor + '층' : ''],
+      ['건축면적', b.buldAr ? Number(b.buldAr).toLocaleString() + ' m²' : ''],
+      ['연면적', b.totAr ? Number(b.totAr).toLocaleString() + ' m²' : ''],
+      ['대지면적', b.plotAr ? Number(b.plotAr).toLocaleString() + ' m²' : ''],
+      ['높이', b.height ? b.height + ' m' : ''], ['건폐율', b.bcRatio ? b.bcRatio + '%' : ''],
+      ['용적률', b.farRatio ? b.farRatio + '%' : ''], ['사용승인일', b.useConfmDe],
+    ];
+    let html = '<table style="font-size:12px;border-collapse:collapse;width:100%;">';
+    rows.forEach(r => {
+      html += '<tr><td style="padding:2px 8px 2px 0;color:#666;white-space:nowrap;">' + r[0] + '</td>' +
+              '<td style="padding:2px 0;">' + (r[1] || '-') + '</td></tr>';
+    });
+    html += '</table>';
+    return html;
+  }
+
+  // 엑셀에 바로 붙여넣기 가능한 탭(TAB) 구분 텍스트 생성
+  function buildExcelRow(address, detail, building) {
+    const latest = detail && detail.priceHistory.length ? detail.priceHistory[0].price : '';
+    const priceCols = [0, 1, 2, 3, 4].map(i => (detail && detail.priceHistory[i]) ? detail.priceHistory[i].price : '');
+    const cols = [
+      address,
+      detail && detail.area ? detail.area : '',
+      detail && detail.jimok ? detail.jimok : '',
+      detail && detail.roadCondition ? detail.roadCondition : '',
+      detail && detail.useZones.length ? detail.useZones.join('/') : '',
+      ...priceCols,
+      building ? building.buldNm : '', building ? building.strct : '', building ? building.prpos : '',
+      building ? building.groundFloor : '', building ? building.undgrndFloor : '',
+      building ? building.buldAr : '', building ? building.totAr : '', building ? building.plotAr : '',
+      building ? building.height : '', building ? building.bcRatio : '', building ? building.farRatio : '',
+    ];
+    return cols.join('\t');
+  }
+  const EXCEL_HEADER_ROW = [
+    '주소(지번)', '면적(m²)', '지목', '도로조건', '용도지역/지구',
+    '공시지가1', '공시지가2', '공시지가3', '공시지가4', '공시지가5',
+    '건물명', '구조', '주용도', '지상층수', '지하층수', '건축면적', '연면적', '대지면적', '높이', '건폐율', '용적률',
+  ].join('\t');
+
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    }
+  }
+
+  // ---- 팝업(정보창) 조립 - 지도(네이버/카카오) 공통 사용 ----
+  window.__parcelReg = window.__parcelReg || {};
+  let __uidSeq = 0;
+
+  function registerParcel(address, lat, lng) {
+    const uid = 'pc' + (__uidSeq++);
+    window.__parcelReg[uid] = { address, lat, lng, pnu: null, detail: null, building: null, buildingOpen: false };
+    return uid;
+  }
+
+  function buildPopupHTML(uid) {
+    const d = window.__parcelReg[uid];
+    if (!d) return '';
+    let html = '<div style="padding:8px 10px;font-size:13px;max-width:280px;">';
+    html += '<b>' + d.address + '</b><br>';
+    html += '<div style="margin:4px 0;">' + (d.detail ? fmtLandSummaryHTML(d.detail) : '<span style="color:#999;">토지정보 조회 중...</span>') + '</div>';
+    html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">';
+    html += '<a href="https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?lat=' + d.lat + '&lng=' + d.lng + '&zoom=17" target="_blank" style="font-size:11px;padding:3px 6px;background:#eee;border-radius:3px;text-decoration:none;color:#333;">토지이음</a>';
+    html += '<a href="https://map.naver.com/p/search/' + d.lat + ',' + d.lng + '" target="_blank" style="font-size:11px;padding:3px 6px;background:#eee;border-radius:3px;text-decoration:none;color:#333;">네이버지도</a>';
+    html += '<a href="https://map.kakao.com/link/map/' + d.lat + ',' + d.lng + '" target="_blank" style="font-size:11px;padding:3px 6px;background:#eee;border-radius:3px;text-decoration:none;color:#333;">카카오맵</a>';
+    html += '<button onclick="window.__toggleBuilding(\'' + uid + '\')" style="font-size:11px;padding:3px 6px;background:#eee;border:none;border-radius:3px;cursor:pointer;">건물정보' + (d.buildingOpen ? ' ▲' : ' ▼') + '</button>';
+    html += '<button onclick="window.__copyParcel(\'' + uid + '\')" style="font-size:11px;padding:3px 6px;background:#2A4258;color:#fff;border:none;border-radius:3px;cursor:pointer;">📋 복사</button>';
+    html += '</div>';
+    if (d.buildingOpen) {
+      html += '<div style="margin-top:6px;border-top:1px solid #eee;padding-top:6px;">';
+      html += d.building === undefined ? '<span style="color:#999;">조회 중...</span>' : fmtBuildingHTML(d.building);
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // 팝업 재렌더 콜백 - 지번(uid)별로 저장 (지도 provider별로 InfoWindow 갱신 방식이 다름)
+  window.__toggleBuilding = function (uid) {
+    const d = window.__parcelReg[uid];
+    if (!d) return;
+    d.buildingOpen = !d.buildingOpen;
+    if (d.buildingOpen && d.building === null) {
+      d.building = undefined; // 로딩중 표시
+      if (d.refresh) d.refresh();
+      fetchBuildingInfo(d.pnu, function (b) {
+        d.building = b;
+        if (d.refresh) d.refresh();
+      });
+    } else {
+      if (d.refresh) d.refresh();
+    }
+  };
+
+  window.__copyParcel = function (uid) {
+    const d = window.__parcelReg[uid];
+    if (!d) return;
+    const text = EXCEL_HEADER_ROW + '\n' + buildExcelRow(d.address, d.detail, d.building);
+    copyToClipboard(text);
+    alert('엑셀에 붙여넣기 가능한 표가 클립보드에 복사되었습니다.');
+  };
 
   // ---- 공통 거리/면적 계산 (구면 근사, 참고용 값) ----
   function haversine(lat1, lng1, lat2, lng2) {
@@ -269,11 +482,17 @@
         const pos = new naver.maps.LatLng(p.lat, p.lng);
         bounds.extend(pos);
 
+        const uid = registerParcel(p.address, p.lat, p.lng);
+        const reg = window.__parcelReg[uid];
+
         // VWorld 지적도 경계선 - 브라우저(사용자 IP)에서 비동기로 조회 후 그림
         // (화면 맞춤 기준에는 포함시키지 않아, 조회 성공/실패와 무관하게 화면 위치는 항상 동일합니다)
-        fetchParcelPolygon(p.lat, p.lng, function (ring) {
-          if (!ring || ring.length < 3) return;
-          const path = ring.map(c => new naver.maps.LatLng(c[1], c[0]));
+        fetchParcelPolygon(p.lat, p.lng, function (result) {
+          if (!result) return;
+          reg.pnu = result.pnu;
+          if (result.officialAddr) reg.address = result.officialAddr; // 검색 주소 대신 정식 지번으로 교체
+          if (!result.ring || result.ring.length < 3) return;
+          const path = result.ring.map(c => new naver.maps.LatLng(c[1], c[0]));
           new naver.maps.Polygon({
             map: map, paths: path,
             fillColor: p.color, fillOpacity: 0.25, strokeColor: p.color, strokeWeight: 2
@@ -284,8 +503,19 @@
           position: pos, map: map,
           icon: { content: badgeHTML(p.shape, p.color, idx + 1), anchor: new naver.maps.Point(14, 14) }
         });
-        const infowindow = new naver.maps.InfoWindow({ content: '<div style="padding:6px 10px;font-size:13px;">' + p.address + '</div>' });
-        naver.maps.Event.addListener(marker, 'click', function () { infowindow.open(map, marker); });
+        const infowindow = new naver.maps.InfoWindow({ content: buildPopupHTML(uid) });
+        reg.refresh = function () { infowindow.setContent(buildPopupHTML(uid)); };
+        let landDetailLoaded = false;
+        naver.maps.Event.addListener(marker, 'click', function () {
+          infowindow.setContent(buildPopupHTML(uid));
+          infowindow.open(map, marker);
+          if (landDetailLoaded || !reg.pnu) return;
+          landDetailLoaded = true;
+          fetchLandDetail(reg.pnu, function (detail) {
+            reg.detail = detail;
+            infowindow.setContent(buildPopupHTML(uid));
+          });
+        });
       });
 
       if (parcels.length > 0) {
@@ -509,9 +739,15 @@
           const pos = new kakao.maps.LatLng(p.lat, p.lng);
           bounds.extend(pos);
 
-          fetchParcelPolygon(p.lat, p.lng, function (ring) {
-            if (!ring || ring.length < 3) return;
-            const path = ring.map(c => new kakao.maps.LatLng(c[1], c[0]));
+          const uid = registerParcel(p.address, p.lat, p.lng);
+          const reg = window.__parcelReg[uid];
+
+          fetchParcelPolygon(p.lat, p.lng, function (result) {
+            if (!result) return;
+            reg.pnu = result.pnu;
+            if (result.officialAddr) reg.address = result.officialAddr;
+            if (!result.ring || result.ring.length < 3) return;
+            const path = result.ring.map(c => new kakao.maps.LatLng(c[1], c[0]));
             new kakao.maps.Polygon({
               map: map, path: path,
               fillColor: p.color, fillOpacity: 0.25, strokeColor: p.color, strokeWeight: 2
@@ -524,10 +760,19 @@
           const overlay = new kakao.maps.CustomOverlay({ position: pos, content: badgeNode });
           overlay.setMap(map);
 
-          const infowindow = new kakao.maps.InfoWindow({ content: '<div style="padding:6px 10px;font-size:13px;">' + p.address + '</div>' });
+          const infowindow = new kakao.maps.InfoWindow({ content: buildPopupHTML(uid) });
+          reg.refresh = function () { infowindow.setContent(buildPopupHTML(uid)); if (infowindow.getMap()) { infowindow.close(); infowindow.open(map); } };
+          let landDetailLoaded = false;
           badgeNode.addEventListener('click', function () {
             infowindow.setPosition(pos);
+            infowindow.setContent(buildPopupHTML(uid));
             infowindow.open(map);
+            if (landDetailLoaded || !reg.pnu) return;
+            landDetailLoaded = true;
+            fetchLandDetail(reg.pnu, function (detail) {
+              reg.detail = detail;
+              infowindow.setContent(buildPopupHTML(uid));
+            });
           });
         });
 
