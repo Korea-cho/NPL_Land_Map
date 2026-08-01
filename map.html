@@ -482,6 +482,20 @@
       let stored = null;
       try { stored = JSON.parse(localStorage.getItem(storageKey) || 'null'); } catch (e) { stored = null; }
 
+      // 지도 바깥(빈 곳) 클릭 시 열려있는 정보창을 자동으로 닫기 위한 추적 변수
+      let currentInfoWindow = null;
+      let currentInfoUid = null;
+      function closeCurrentInfoWindow() {
+        if (currentInfoWindow) {
+          currentInfoWindow.close();
+          if (currentInfoUid && window.__parcelReg[currentInfoUid]) {
+            window.__parcelReg[currentInfoUid].buildingOpen = false;
+          }
+          currentInfoWindow = null;
+          currentInfoUid = null;
+        }
+      }
+
       parcels.forEach(function (p, idx) {
         const pos = new naver.maps.LatLng(p.lat, p.lng);
         bounds.extend(pos);
@@ -511,8 +525,11 @@
         reg.refresh = function () { infowindow.setContent(buildPopupHTML(uid)); };
         let landDetailLoaded = false;
         naver.maps.Event.addListener(marker, 'click', function () {
+          if (currentInfoWindow && currentInfoWindow !== infowindow) closeCurrentInfoWindow();
           infowindow.setContent(buildPopupHTML(uid));
           infowindow.open(map, marker);
+          currentInfoWindow = infowindow;
+          currentInfoUid = uid;
           if (landDetailLoaded || !reg.pnu) return;
           landDetailLoaded = true;
           fetchLandDetail(reg.pnu, function (detail) {
@@ -521,6 +538,9 @@
           });
         });
       });
+
+      // 지도의 빈 곳을 클릭하면 열려있는 정보창을 자동으로 닫음
+      naver.maps.Event.addListener(map, 'click', closeCurrentInfoWindow);
 
       if (parcels.length > 0) {
         if (stored && stored.idsKey === idsKey) {
@@ -739,6 +759,20 @@
         let stored = null;
         try { stored = JSON.parse(localStorage.getItem(storageKey) || 'null'); } catch (e) { stored = null; }
 
+        // 지도 바깥(빈 곳) 클릭 시 열려있는 정보창을 자동으로 닫기 위한 추적 변수
+        let currentInfoWindow = null;
+        let currentInfoUid = null;
+        function closeCurrentInfoWindow() {
+          if (currentInfoWindow) {
+            currentInfoWindow.close();
+            if (currentInfoUid && window.__parcelReg[currentInfoUid]) {
+              window.__parcelReg[currentInfoUid].buildingOpen = false;
+            }
+            currentInfoWindow = null;
+            currentInfoUid = null;
+          }
+        }
+
         parcels.forEach(function (p, idx) {
           const pos = new kakao.maps.LatLng(p.lat, p.lng);
           bounds.extend(pos);
@@ -768,9 +802,12 @@
           reg.refresh = function () { infowindow.setContent(buildPopupHTML(uid)); if (infowindow.getMap()) { infowindow.close(); infowindow.open(map); } };
           let landDetailLoaded = false;
           badgeNode.addEventListener('click', function () {
+            if (currentInfoWindow && currentInfoWindow !== infowindow) closeCurrentInfoWindow();
             infowindow.setPosition(pos);
             infowindow.setContent(buildPopupHTML(uid));
             infowindow.open(map);
+            currentInfoWindow = infowindow;
+            currentInfoUid = uid;
             if (landDetailLoaded || !reg.pnu) return;
             landDetailLoaded = true;
             fetchLandDetail(reg.pnu, function (detail) {
@@ -779,6 +816,9 @@
             });
           });
         });
+
+        // 지도의 빈 곳을 클릭하면 열려있는 정보창을 자동으로 닫음
+        kakao.maps.event.addListener(map, 'click', closeCurrentInfoWindow);
 
         if (parcels.length > 0) {
           if (stored && stored.idsKey === idsKey) {

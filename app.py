@@ -55,11 +55,17 @@ if not check_password():
     st.stop()
 
 # 흰색 배경에서 입력창 경계가 안 보이는 문제 - 어두운 윤곽선 추가
+# (포커스 시 기본 테마색(빨강) 아웃라인이 추가로 붙는 것은 제거 - 윤곽선 하나만 유지)
 st.markdown(
     """
     <style>
       textarea, input[type="text"], input[type="password"] {
         border: 1px solid #6b6f66 !important;
+      }
+      textarea:focus, input[type="text"]:focus, input[type="password"]:focus {
+        border-color: #6b6f66 !important;
+        outline: none !important;
+        box-shadow: none !important;
       }
     </style>
     """,
@@ -305,7 +311,6 @@ if st.session_state.parcels:
             num_col, addr_col, del_col = st.columns([1, 7, 1])
             pop_key = f"colorpop_{p['id']}"
             with num_col.popover(str(i + 1), key=pop_key):
-                st.caption("색상 선택")
                 for row_start in range(0, len(EXCEL_COLORS), 5):
                     row_colors = EXCEL_COLORS[row_start:row_start + 5]
                     color_cols = st.columns(len(row_colors), gap="small")
@@ -319,7 +324,8 @@ if st.session_state.parcels:
                             f'border-color:rgba(0,0,0,0.15) !important; }}'
                         )
             # 번호 트리거 버튼 자체를 "윤곽선 있는 사각형 안에 번호"로 스타일링
-            # (popover 버튼에 기본으로 붙는 펼침 화살표(chevron) svg는 숨김)
+            # (popover 버튼에 기본으로 붙는 펼침 화살표(chevron)는 버튼 내부 두 번째 자식으로
+            #  렌더링되므로 nth-child(2)로 확실히 숨김)
             palette_css_rules.append(
                 f'.st-key-{pop_key} button {{ '
                 f'background:{p["color"]} !important; color:#fff !important; '
@@ -329,7 +335,8 @@ if st.session_state.parcels:
                 f'padding:0 !important; line-height:1 !important; overflow:hidden !important; '
                 f'justify-content:center !important; }} '
                 f'.st-key-{pop_key} button svg {{ display:none !important; }} '
-                f'.st-key-{pop_key} button > div {{ margin:0 !important; gap:0 !important; }}'
+                f'.st-key-{pop_key} button > div {{ margin:0 !important; gap:0 !important; }} '
+                f'.st-key-{pop_key} button > div > *:nth-child(2) {{ display:none !important; }}'
             )
             addr_col.markdown(
                 f"<span style='font-size:0.8rem'><b>{p['address']}</b></span>",
@@ -349,12 +356,18 @@ if st.session_state.parcels:
             padding: 0 !important; font-size: 0.7rem !important; line-height: 1 !important;
           }}
           [class*="st-key-palette_"] button {{
-            border-radius: 2px !important;
-            width: 100% !important; height: 1.5rem !important; min-height: 1.5rem !important;
+            border-radius: 1px !important;
+            width: 100% !important; height: 0.6rem !important; min-height: 0.6rem !important;
             padding: 0 !important; margin: 0 !important;
           }}
           section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] {{ gap: 0.12rem !important; }}
-          div[data-testid="stPopoverBody"] {{ padding: 0.5rem !important; }}
+          div[data-testid="stPopoverBody"] {{
+            padding: 0.25rem !important;
+            min-width: 3.6rem !important;
+            width: 3.6rem !important;
+          }}
+          div[data-testid="stPopoverBody"] div[data-testid="stHorizontalBlock"] {{ gap: 0.05rem !important; }}
+          div[data-testid="stPopoverBody"] div[data-testid="element-container"] {{ margin-bottom: 0.05rem !important; }}
           {" ".join(palette_css_rules)}
         </style>
         """,
@@ -385,6 +398,22 @@ if len(st.session_state.parcels) >= 2:
                 else:
                     straight = haversine_km((p1["lat"], p1["lng"]), (p2["lat"], p2["lng"]))
                     st.warning(f"경로 계산 실패. 직선거리 참고값: {straight:.1f} km")
+
+    # 거리계산 영역의 카드/셀렉트박스 모서리가 일부는 둥글고 일부는 각져 있어 모호해 보이는 문제
+    # - 해당 영역의 모든 모서리를 직각(0)으로 통일
+    st.markdown(
+        """
+        <style>
+          section[data-testid="stSidebar"] div[data-testid="stExpander"],
+          section[data-testid="stSidebar"] div[data-testid="stExpander"] *,
+          section[data-testid="stSidebar"] div[data-baseweb="select"],
+          section[data-testid="stSidebar"] div[data-baseweb="select"] * {
+            border-radius: 0 !important;
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # =========================================================
